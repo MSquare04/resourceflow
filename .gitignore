@@ -13,6 +13,8 @@ dist/
 *.exe
 *.out
 coverage.out
+backend/.gocache/
+backend/.gomodcache/
 
 # Env
 .env
