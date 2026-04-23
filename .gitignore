@@ -1,0 +1,29 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Go
+bin/
+dist/
+*.exe
+*.out
+coverage.out
+
+# Env
+.env
+.env.local
+
+# Logs
+*.log
+
+# Node/frontend
+node_modules/
+
+# Temporary
+tmp/
+temp/
