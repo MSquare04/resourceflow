@@ -1,18 +1,54 @@
 # ResourceFlow
 
-ResourceFlow — platform for managing corporate resources, availability, bookings, and related interview workflows.
+**ResourceFlow** — платформа управления корпоративными ресурсами, предназначенная для учета ресурсов, управления их доступностью, бронированием и связанными организационными процессами.
 
-## Project structure
+## Основные возможности
 
-- `backend/` — backend application
-- `frontend/` — frontend application
-- `docs/` — project documentation
+Система предназначена для:
+- управления корпоративными ресурсами;
+- управления доступностью ресурсов;
+- создания и сопровождения бронирований;
+- предотвращения конфликтов бронирования;
+- поддержки интервьюирования кандидатов;
+- журналирования действий пользователей;
+- формирования базовой отчетности.
 
-## Documentation
+## Технологический стек
 
-- `docs/tz.md`
-- `docs/analytics.md`
-- `docs/architecture.md`
-- `docs/database.md`
-- `docs/api.md`
-- `docs/development-plan.md`
+### Backend
+- Go
+
+### Frontends
+- HTML
+- CSS
+- JavaScript
+
+### База данных
+- PostgreSQL
+
+### Кэширование
+- Redis
+
+### API
+- REST JSON
+
+## Структура проекта
+
+- `backend/` — серверная часть приложения
+- `frontend/` — клиентская часть приложения
+- `docs/` — проектная документация и контекст для разработки
+
+## Документация
+
+В папке `docs/` хранятся основные материалы проекта:
+
+- `tz.md` — краткое техническое задание
+- `analytics.md` — аналитика и бизнес-правила
+- `architecture.md` — архитектура системы
+- `database.md` — структура базы данных
+- `api.md` — описание API
+- `development-plan.md` — план разработки MVP
+
+## Текущий статус
+
+Проект находится на этапе подготовки контекста и структуры для дальнейшей реализации MVP.
