@@ -52,3 +52,14 @@
 ## Текущий статус
 
 Проект находится на этапе подготовки контекста и структуры для дальнейшей реализации MVP.
+
+## Development Commands
+
+From the repository root:
+
+```bash
+make run
+make test
+make tidy
+make build
+```
