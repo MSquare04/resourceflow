@@ -10,6 +10,7 @@ type Config struct {
 	Env      string
 	HTTP     HTTPConfig
 	Postgres PostgresConfig
+	JWT      JWTConfig
 }
 
 type HTTPConfig struct {
@@ -26,6 +27,11 @@ type PostgresConfig struct {
 	SSLMode  string
 }
 
+type JWTConfig struct {
+	Secret       string
+	ExpiresHours int
+}
+
 func (p PostgresConfig) DSN() string {
 	return fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
@@ -39,6 +45,11 @@ func (p PostgresConfig) DSN() string {
 }
 
 func Load() Config {
+	jwtExpiresHours := utils.GetEnvInt("JWT_EXPIRES_HOURS", 24)
+	if jwtExpiresHours <= 0 {
+		jwtExpiresHours = 24
+	}
+
 	return Config{
 		Env: utils.GetEnv("APP_ENV", "development"),
 		HTTP: HTTPConfig{
@@ -52,6 +63,10 @@ func Load() Config {
 			Password: utils.GetEnv("POSTGRES_PASSWORD", "postgres"),
 			DBName:   utils.GetEnv("POSTGRES_DB", "resourceflow"),
 			SSLMode:  utils.GetEnv("POSTGRES_SSLMODE", "disable"),
+		},
+		JWT: JWTConfig{
+			Secret:       utils.GetEnv("JWT_SECRET", "change-me"),
+			ExpiresHours: jwtExpiresHours,
 		},
 	}
 }
