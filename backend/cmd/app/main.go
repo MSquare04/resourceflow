@@ -37,6 +37,9 @@ func main() {
 
 	userRepository := repository.NewUserRepository(postgres)
 	departmentRepository := repository.NewDepartmentRepository(postgres)
+	resourceCategoryRepository := repository.NewResourceCategoryRepository(postgres)
+	resourceTypeRepository := repository.NewResourceTypeRepository(postgres)
+	resourceRepository := repository.NewResourceRepository(postgres)
 	passwordHasher := auth.NewBcryptHasher()
 	tokenManager := auth.NewTokenManager(
 		cfg.JWT.Secret,
@@ -45,13 +48,19 @@ func main() {
 	authService := service.NewAuthService(userRepository, passwordHasher, tokenManager)
 	departmentService := service.NewDepartmentService(departmentRepository)
 	userService := service.NewUserService(userRepository, passwordHasher)
+	resourceCategoryService := service.NewResourceCategoryService(resourceCategoryRepository)
+	resourceTypeService := service.NewResourceTypeService(resourceTypeRepository)
+	resourceService := service.NewResourceService(resourceRepository)
 
 	router.Register(e, router.Dependencies{
-		HealthHandler:     handler.NewHealthHandler(postgres),
-		AuthHandler:       handler.NewAuthHandler(authService),
-		DepartmentHandler: handler.NewDepartmentHandler(departmentService),
-		UserHandler:       handler.NewUserHandler(userService),
-		AuthMiddleware:    rfmiddleware.NewAuthMiddleware(tokenManager),
+		HealthHandler:           handler.NewHealthHandler(postgres),
+		AuthHandler:             handler.NewAuthHandler(authService),
+		DepartmentHandler:       handler.NewDepartmentHandler(departmentService),
+		UserHandler:             handler.NewUserHandler(userService),
+		ResourceCategoryHandler: handler.NewResourceCategoryHandler(resourceCategoryService),
+		ResourceTypeHandler:     handler.NewResourceTypeHandler(resourceTypeService),
+		ResourceHandler:         handler.NewResourceHandler(resourceService),
+		AuthMiddleware:          rfmiddleware.NewAuthMiddleware(tokenManager),
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.HTTP.Host, cfg.HTTP.Port)
