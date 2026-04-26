@@ -36,17 +36,22 @@ func main() {
 	defer postgres.Close()
 
 	userRepository := repository.NewUserRepository(postgres)
+	departmentRepository := repository.NewDepartmentRepository(postgres)
 	passwordHasher := auth.NewBcryptHasher()
 	tokenManager := auth.NewTokenManager(
 		cfg.JWT.Secret,
 		time.Duration(cfg.JWT.ExpiresHours)*time.Hour,
 	)
 	authService := service.NewAuthService(userRepository, passwordHasher, tokenManager)
+	departmentService := service.NewDepartmentService(departmentRepository)
+	userService := service.NewUserService(userRepository, passwordHasher)
 
 	router.Register(e, router.Dependencies{
-		HealthHandler:  handler.NewHealthHandler(postgres),
-		AuthHandler:    handler.NewAuthHandler(authService),
-		AuthMiddleware: rfmiddleware.NewAuthMiddleware(tokenManager),
+		HealthHandler:     handler.NewHealthHandler(postgres),
+		AuthHandler:       handler.NewAuthHandler(authService),
+		DepartmentHandler: handler.NewDepartmentHandler(departmentService),
+		UserHandler:       handler.NewUserHandler(userService),
+		AuthMiddleware:    rfmiddleware.NewAuthMiddleware(tokenManager),
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.HTTP.Host, cfg.HTTP.Port)

@@ -5,5 +5,6 @@ type User struct {
 	FullName     string
 	Email        string
 	PasswordHash string
+	DepartmentID *int64
 	IsActive     bool
 }
