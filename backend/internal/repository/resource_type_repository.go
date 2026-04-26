@@ -12,6 +12,7 @@ type ResourceTypeRepository interface {
 	Create(ctx context.Context, categoryID int64, code, name, description string, isActive bool) (model.ResourceType, error)
 	List(ctx context.Context) ([]model.ResourceType, error)
 	FindByID(ctx context.Context, id int64) (model.ResourceType, error)
+	ExistsByIDAndCategory(ctx context.Context, id int64, categoryID int64) (bool, error)
 	Update(ctx context.Context, id int64, categoryID int64, code, name, description string, isActive bool) (model.ResourceType, error)
 }
 
@@ -104,6 +105,24 @@ LIMIT 1;
 	}
 
 	return resourceType, nil
+}
+
+func (r *PostgresResourceTypeRepository) ExistsByIDAndCategory(ctx context.Context, id int64, categoryID int64) (bool, error) {
+	query := `
+SELECT EXISTS(
+  SELECT 1
+  FROM app.resource_types
+  WHERE id = $1
+    AND category_id = $2
+);
+`
+
+	var exists bool
+	if err := r.db.QueryRowContext(ctx, query, id, categoryID).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check resource type/category relation failed: %w", err)
+	}
+
+	return exists, nil
 }
 
 func (r *PostgresResourceTypeRepository) Update(ctx context.Context, id int64, categoryID int64, code, name, description string, isActive bool) (model.ResourceType, error) {

@@ -65,7 +65,7 @@ func main() {
 	userService := service.NewUserService(userRepository, passwordHasher)
 	resourceCategoryService := service.NewResourceCategoryService(resourceCategoryRepository)
 	resourceTypeService := service.NewResourceTypeService(resourceTypeRepository)
-	resourceService := service.NewResourceService(resourceRepository)
+	resourceService := service.NewResourceService(resourceRepository, resourceTypeRepository)
 
 	router.Register(e, router.Dependencies{
 		HealthHandler:           handler.NewHealthHandler(postgres),

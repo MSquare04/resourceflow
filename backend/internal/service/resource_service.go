@@ -14,11 +14,15 @@ import (
 var ErrResourceNotFound = errors.New("resource not found")
 
 type ResourceService struct {
-	resources repository.ResourceRepository
+	resources     repository.ResourceRepository
+	resourceTypes repository.ResourceTypeRepository
 }
 
-func NewResourceService(resources repository.ResourceRepository) *ResourceService {
-	return &ResourceService{resources: resources}
+func NewResourceService(resources repository.ResourceRepository, resourceTypes repository.ResourceTypeRepository) *ResourceService {
+	return &ResourceService{
+		resources:     resources,
+		resourceTypes: resourceTypes,
+	}
 }
 
 func (s *ResourceService) Create(ctx context.Context, req dto.CreateResourceRequest) (dto.ResourceResponse, error) {
@@ -42,6 +46,14 @@ func (s *ResourceService) Create(ctx context.Context, req dto.CreateResourceRequ
 	isActive := true
 	if req.IsActive != nil {
 		isActive = *req.IsActive
+	}
+
+	validTypeCategory, err := s.resourceTypes.ExistsByIDAndCategory(ctx, req.TypeID, req.CategoryID)
+	if err != nil {
+		return dto.ResourceResponse{}, err
+	}
+	if !validTypeCategory {
+		return dto.ResourceResponse{}, ErrValidation
 	}
 
 	resource, err := s.resources.Create(ctx, repository.CreateResourceParams{
@@ -106,12 +118,6 @@ func (s *ResourceService) Update(ctx context.Context, id int64, req dto.UpdateRe
 	}
 
 	description := strings.TrimSpace(req.Description)
-	location := trimNullableString(req.Location)
-	capacity := trimCapacity(req.Capacity)
-	if capacity != nil && *capacity < 0 {
-		return dto.ResourceResponse{}, ErrValidation
-	}
-
 	isBookable := current.IsBookable
 	if req.IsBookable != nil {
 		isBookable = *req.IsBookable
@@ -122,12 +128,39 @@ func (s *ResourceService) Update(ctx context.Context, id int64, req dto.UpdateRe
 		isActive = *req.IsActive
 	}
 
+	validTypeCategory, err := s.resourceTypes.ExistsByIDAndCategory(ctx, req.TypeID, req.CategoryID)
+	if err != nil {
+		return dto.ResourceResponse{}, err
+	}
+	if !validTypeCategory {
+		return dto.ResourceResponse{}, ErrValidation
+	}
+
+	departmentID := current.DepartmentID
+	if req.DepartmentID != nil {
+		departmentID = req.DepartmentID
+	}
+
+	location := current.Location
+	if req.Location != nil {
+		location = trimNullableString(req.Location)
+	}
+
+	capacity := current.Capacity
+	if req.Capacity != nil {
+		normalizedCapacity := trimCapacity(req.Capacity)
+		if normalizedCapacity != nil && *normalizedCapacity < 0 {
+			return dto.ResourceResponse{}, ErrValidation
+		}
+		capacity = normalizedCapacity
+	}
+
 	resource, err := s.resources.Update(ctx, id, repository.UpdateResourceParams{
 		Name:         name,
 		Description:  description,
 		CategoryID:   req.CategoryID,
 		TypeID:       req.TypeID,
-		DepartmentID: req.DepartmentID,
+		DepartmentID: departmentID,
 		Location:     location,
 		Capacity:     capacity,
 		IsBookable:   isBookable,

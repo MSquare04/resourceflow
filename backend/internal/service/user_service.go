@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/mail"
 	"strings"
 
 	"github.com/lib/pq"
@@ -35,7 +36,7 @@ func (s *UserService) Create(ctx context.Context, req dto.CreateUserRequest) (dt
 	fullName := strings.TrimSpace(req.FullName)
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	password := strings.TrimSpace(req.Password)
-	if fullName == "" || email == "" || password == "" {
+	if fullName == "" || email == "" || password == "" || !isValidEmail(email) {
 		return dto.UserResponse{}, ErrValidation
 	}
 
@@ -144,7 +145,7 @@ func (s *UserService) Update(ctx context.Context, id int64, req dto.UpdateUserRe
 
 	fullName := strings.TrimSpace(req.FullName)
 	email := strings.ToLower(strings.TrimSpace(req.Email))
-	if fullName == "" || email == "" {
+	if fullName == "" || email == "" || !isValidEmail(email) {
 		return dto.UserResponse{}, ErrValidation
 	}
 
@@ -217,4 +218,12 @@ func isForeignKeyViolation(err error) bool {
 		return pqErr.Code == "23503"
 	}
 	return false
+}
+
+func isValidEmail(email string) bool {
+	parsed, err := mail.ParseAddress(email)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(parsed.Address, email)
 }
