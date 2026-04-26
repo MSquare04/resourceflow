@@ -25,7 +25,7 @@ func (m *AuthMiddleware) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc {
 			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{
 				Success: false,
 				Error: dto.APIError{
-					Code:    "unauthorized",
+					Code:    dto.ErrorCodeUnauthorized,
 					Message: "missing or invalid authorization header",
 				},
 			})
@@ -36,7 +36,7 @@ func (m *AuthMiddleware) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc {
 			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{
 				Success: false,
 				Error: dto.APIError{
-					Code:    "unauthorized",
+					Code:    dto.ErrorCodeUnauthorized,
 					Message: "missing access token",
 				},
 			})
@@ -47,7 +47,7 @@ func (m *AuthMiddleware) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc {
 			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{
 				Success: false,
 				Error: dto.APIError{
-					Code:    "unauthorized",
+					Code:    dto.ErrorCodeUnauthorized,
 					Message: "invalid access token",
 				},
 			})

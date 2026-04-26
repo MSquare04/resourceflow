@@ -15,11 +15,12 @@ POSTGRES_SSLMODE ?= disable
 
 DATABASE_URL := postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=$(POSTGRES_SSLMODE)
 
-.PHONY: help run test tidy build fmt vet check clean migrate-up migrate-down migrate-version
+.PHONY: help run dev-up test tidy build fmt vet check clean migrate-up migrate-down migrate-version
 
 help:
 	@echo "Available commands:"
 	@echo "  make run    - run backend"
+	@echo "  make dev-up - apply migrations and run backend"
 	@echo "  make test   - run backend tests"
 	@echo "  make tidy   - run go mod tidy"
 	@echo "  make build  - build backend binary"
@@ -33,6 +34,8 @@ help:
 
 run:
 	cd $(BACKEND_DIR) && go run ./cmd/app
+
+dev-up: migrate-up run
 
 test:
 	cd $(BACKEND_DIR) && go test ./...

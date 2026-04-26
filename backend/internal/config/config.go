@@ -8,6 +8,7 @@ import (
 
 type Config struct {
 	Env      string
+	LogLevel string
 	HTTP     HTTPConfig
 	Postgres PostgresConfig
 	JWT      JWTConfig
@@ -51,7 +52,8 @@ func Load() Config {
 	}
 
 	return Config{
-		Env: utils.GetEnv("APP_ENV", "development"),
+		Env:      utils.GetEnv("APP_ENV", "development"),
+		LogLevel: utils.GetEnv("LOG_LEVEL", "info"),
 		HTTP: HTTPConfig{
 			Host: utils.GetEnv("HTTP_HOST", "127.0.0.1"),
 			Port: utils.GetEnvInt("HTTP_PORT", 18080),

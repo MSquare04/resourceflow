@@ -32,7 +32,7 @@ func (h *ResourceCategoryHandler) Create(c *echo.Context) error {
 		case errors.Is(err, service.ErrResourceCategoryCodeExists):
 			return conflictError(c, "resource category code already exists")
 		default:
-			return internalError(c, "failed to create resource category")
+			return internalError(c, "failed to create resource category", "resource_category.create", err)
 		}
 	}
 
@@ -45,7 +45,7 @@ func (h *ResourceCategoryHandler) Create(c *echo.Context) error {
 func (h *ResourceCategoryHandler) List(c *echo.Context) error {
 	categories, err := h.categories.List(c.Request().Context())
 	if err != nil {
-		return internalError(c, "failed to load resource categories")
+		return internalError(c, "failed to load resource categories", "resource_category.list", err)
 	}
 
 	return c.JSON(http.StatusOK, dto.SuccessResponse{
@@ -66,7 +66,7 @@ func (h *ResourceCategoryHandler) GetByID(c *echo.Context) error {
 		case errors.Is(err, service.ErrResourceCategoryNotFound):
 			return notFoundError(c, "resource category not found")
 		default:
-			return internalError(c, "failed to load resource category")
+			return internalError(c, "failed to load resource category", "resource_category.get_by_id", err, "resource_category_id", id)
 		}
 	}
 
@@ -97,7 +97,7 @@ func (h *ResourceCategoryHandler) Update(c *echo.Context) error {
 		case errors.Is(err, service.ErrResourceCategoryCodeExists):
 			return conflictError(c, "resource category code already exists")
 		default:
-			return internalError(c, "failed to update resource category")
+			return internalError(c, "failed to update resource category", "resource_category.update", err, "resource_category_id", id)
 		}
 	}
 

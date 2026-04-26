@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"resourceflow/backend/internal/model"
 )
@@ -38,7 +39,7 @@ RETURNING id, code, name, COALESCE(description, ''), is_active;
 		&category.IsActive,
 	)
 	if err != nil {
-		return model.ResourceCategory{}, err
+		return model.ResourceCategory{}, fmt.Errorf("create resource category query failed: %w", err)
 	}
 
 	return category, nil
@@ -53,7 +54,7 @@ ORDER BY id;
 
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list resource categories query failed: %w", err)
 	}
 	defer rows.Close()
 
@@ -61,13 +62,13 @@ ORDER BY id;
 	for rows.Next() {
 		var category model.ResourceCategory
 		if err := rows.Scan(&category.ID, &category.Code, &category.Name, &category.Description, &category.IsActive); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("list resource categories scan failed: %w", err)
 		}
 		categories = append(categories, category)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list resource categories rows failed: %w", err)
 	}
 
 	return categories, nil
@@ -90,7 +91,7 @@ LIMIT 1;
 		&category.IsActive,
 	)
 	if err != nil {
-		return model.ResourceCategory{}, err
+		return model.ResourceCategory{}, fmt.Errorf("find resource category by id query failed: %w", err)
 	}
 
 	return category, nil
@@ -117,7 +118,7 @@ RETURNING id, code, name, COALESCE(description, ''), is_active;
 		&category.IsActive,
 	)
 	if err != nil {
-		return model.ResourceCategory{}, err
+		return model.ResourceCategory{}, fmt.Errorf("update resource category query failed: %w", err)
 	}
 
 	return category, nil

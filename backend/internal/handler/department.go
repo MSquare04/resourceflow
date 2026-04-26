@@ -3,7 +3,6 @@ package handler
 import (
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/labstack/echo/v5"
 
@@ -33,7 +32,7 @@ func (h *DepartmentHandler) Create(c *echo.Context) error {
 		case errors.Is(err, service.ErrDepartmentNameExists):
 			return conflictError(c, "department name already exists")
 		default:
-			return internalError(c, "failed to create department")
+			return internalError(c, "failed to create department", "department.create", err)
 		}
 	}
 
@@ -46,7 +45,7 @@ func (h *DepartmentHandler) Create(c *echo.Context) error {
 func (h *DepartmentHandler) List(c *echo.Context) error {
 	departments, err := h.departments.List(c.Request().Context())
 	if err != nil {
-		return internalError(c, "failed to load departments")
+		return internalError(c, "failed to load departments", "department.list", err)
 	}
 
 	return c.JSON(http.StatusOK, dto.SuccessResponse{
@@ -67,7 +66,7 @@ func (h *DepartmentHandler) GetByID(c *echo.Context) error {
 		case errors.Is(err, service.ErrDepartmentNotFound):
 			return notFoundError(c, "department not found")
 		default:
-			return internalError(c, "failed to load department")
+			return internalError(c, "failed to load department", "department.get_by_id", err, "department_id", id)
 		}
 	}
 
@@ -98,56 +97,12 @@ func (h *DepartmentHandler) Update(c *echo.Context) error {
 		case errors.Is(err, service.ErrDepartmentNameExists):
 			return conflictError(c, "department name already exists")
 		default:
-			return internalError(c, "failed to update department")
+			return internalError(c, "failed to update department", "department.update", err, "department_id", id)
 		}
 	}
 
 	return c.JSON(http.StatusOK, dto.SuccessResponse{
 		Success: true,
 		Data:    department,
-	})
-}
-
-func parseIDParam(c *echo.Context, name string) (int64, error) {
-	return strconv.ParseInt(c.Param(name), 10, 64)
-}
-
-func validationError(c *echo.Context, message string) error {
-	return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
-		Success: false,
-		Error: dto.APIError{
-			Code:    "validation_error",
-			Message: message,
-		},
-	})
-}
-
-func notFoundError(c *echo.Context, message string) error {
-	return c.JSON(http.StatusNotFound, dto.ErrorResponse{
-		Success: false,
-		Error: dto.APIError{
-			Code:    "not_found",
-			Message: message,
-		},
-	})
-}
-
-func conflictError(c *echo.Context, message string) error {
-	return c.JSON(http.StatusConflict, dto.ErrorResponse{
-		Success: false,
-		Error: dto.APIError{
-			Code:    "conflict",
-			Message: message,
-		},
-	})
-}
-
-func internalError(c *echo.Context, message string) error {
-	return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{
-		Success: false,
-		Error: dto.APIError{
-			Code:    "internal_error",
-			Message: message,
-		},
 	})
 }

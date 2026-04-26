@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"resourceflow/backend/internal/model"
 )
@@ -39,7 +40,7 @@ RETURNING id, category_id, code, name, COALESCE(description, ''), is_active;
 		&resourceType.IsActive,
 	)
 	if err != nil {
-		return model.ResourceType{}, err
+		return model.ResourceType{}, fmt.Errorf("create resource type query failed: %w", err)
 	}
 
 	return resourceType, nil
@@ -54,7 +55,7 @@ ORDER BY id;
 
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list resource types query failed: %w", err)
 	}
 	defer rows.Close()
 
@@ -69,13 +70,13 @@ ORDER BY id;
 			&resourceType.Description,
 			&resourceType.IsActive,
 		); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("list resource types scan failed: %w", err)
 		}
 		resourceTypes = append(resourceTypes, resourceType)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list resource types rows failed: %w", err)
 	}
 
 	return resourceTypes, nil
@@ -99,7 +100,7 @@ LIMIT 1;
 		&resourceType.IsActive,
 	)
 	if err != nil {
-		return model.ResourceType{}, err
+		return model.ResourceType{}, fmt.Errorf("find resource type by id query failed: %w", err)
 	}
 
 	return resourceType, nil
@@ -128,7 +129,7 @@ RETURNING id, category_id, code, name, COALESCE(description, ''), is_active;
 		&resourceType.IsActive,
 	)
 	if err != nil {
-		return model.ResourceType{}, err
+		return model.ResourceType{}, fmt.Errorf("update resource type query failed: %w", err)
 	}
 
 	return resourceType, nil

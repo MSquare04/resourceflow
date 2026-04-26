@@ -26,7 +26,7 @@ func (h *AuthHandler) Login(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
 			Success: false,
 			Error: dto.APIError{
-				Code:    "validation_error",
+				Code:    dto.ErrorCodeValidation,
 				Message: "invalid request body",
 			},
 		})
@@ -38,7 +38,7 @@ func (h *AuthHandler) Login(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
 			Success: false,
 			Error: dto.APIError{
-				Code:    "validation_error",
+				Code:    dto.ErrorCodeValidation,
 				Message: "email and password are required",
 			},
 		})
@@ -51,7 +51,7 @@ func (h *AuthHandler) Login(c *echo.Context) error {
 			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{
 				Success: false,
 				Error: dto.APIError{
-					Code:    "invalid_credentials",
+					Code:    dto.ErrorCodeUnauthorized,
 					Message: "email or password is incorrect",
 				},
 			})
@@ -59,18 +59,12 @@ func (h *AuthHandler) Login(c *echo.Context) error {
 			return c.JSON(http.StatusForbidden, dto.ErrorResponse{
 				Success: false,
 				Error: dto.APIError{
-					Code:    "inactive_user",
+					Code:    dto.ErrorCodeForbidden,
 					Message: "user account is inactive",
 				},
 			})
 		default:
-			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{
-				Success: false,
-				Error: dto.APIError{
-					Code:    "internal_error",
-					Message: "failed to login",
-				},
-			})
+			return internalError(c, "failed to login", "auth.login", err, "email", email)
 		}
 	}
 
@@ -91,7 +85,7 @@ func (h *AuthHandler) Me(c *echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{
 			Success: false,
 			Error: dto.APIError{
-				Code:    "unauthorized",
+				Code:    dto.ErrorCodeUnauthorized,
 				Message: "authentication required",
 			},
 		})
@@ -104,7 +98,7 @@ func (h *AuthHandler) Me(c *echo.Context) error {
 			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{
 				Success: false,
 				Error: dto.APIError{
-					Code:    "unauthorized",
+					Code:    dto.ErrorCodeUnauthorized,
 					Message: "user not found",
 				},
 			})
@@ -112,18 +106,12 @@ func (h *AuthHandler) Me(c *echo.Context) error {
 			return c.JSON(http.StatusForbidden, dto.ErrorResponse{
 				Success: false,
 				Error: dto.APIError{
-					Code:    "inactive_user",
+					Code:    dto.ErrorCodeForbidden,
 					Message: "user account is inactive",
 				},
 			})
 		default:
-			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{
-				Success: false,
-				Error: dto.APIError{
-					Code:    "internal_error",
-					Message: "failed to load current user",
-				},
-			})
+			return internalError(c, "failed to load current user", "auth.me", err, "user_id", currentUser.UserID)
 		}
 	}
 

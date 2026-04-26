@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/lib/pq"
@@ -66,7 +67,7 @@ LIMIT 1;
 		&user.IsActive,
 	)
 	if err != nil {
-		return model.User{}, err
+		return model.User{}, fmt.Errorf("find user by email query failed: %w", err)
 	}
 	if departmentID.Valid {
 		user.DepartmentID = &departmentID.Int64
@@ -94,7 +95,7 @@ LIMIT 1;
 		&user.IsActive,
 	)
 	if err != nil {
-		return model.User{}, err
+		return model.User{}, fmt.Errorf("find user by id query failed: %w", err)
 	}
 	if departmentID.Valid {
 		user.DepartmentID = &departmentID.Int64
@@ -129,7 +130,7 @@ RETURNING id, full_name, email, password_hash, department_id, is_active;
 		&user.IsActive,
 	)
 	if err != nil {
-		return model.User{}, err
+		return model.User{}, fmt.Errorf("create user query failed: %w", err)
 	}
 	if departmentID.Valid {
 		user.DepartmentID = &departmentID.Int64
@@ -147,7 +148,7 @@ ORDER BY id;
 
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list users query failed: %w", err)
 	}
 	defer rows.Close()
 
@@ -156,7 +157,7 @@ ORDER BY id;
 		var user model.User
 		var departmentID sql.NullInt64
 		if err := rows.Scan(&user.ID, &user.FullName, &user.Email, &user.PasswordHash, &departmentID, &user.IsActive); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("list users scan failed: %w", err)
 		}
 		if departmentID.Valid {
 			user.DepartmentID = &departmentID.Int64
@@ -165,7 +166,7 @@ ORDER BY id;
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list users rows failed: %w", err)
 	}
 
 	return users, nil
@@ -204,7 +205,7 @@ RETURNING id, full_name, email, password_hash, department_id, is_active;
 		&user.IsActive,
 	)
 	if err != nil {
-		return model.User{}, err
+		return model.User{}, fmt.Errorf("update user query failed: %w", err)
 	}
 	if departmentID.Valid {
 		user.DepartmentID = &departmentID.Int64
@@ -224,7 +225,7 @@ ORDER BY r.code;
 
 	rows, err := r.db.QueryContext(ctx, query, userID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list user roles query failed: %w", err)
 	}
 	defer rows.Close()
 
@@ -232,13 +233,13 @@ ORDER BY r.code;
 	for rows.Next() {
 		var role string
 		if err := rows.Scan(&role); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("list user roles scan failed: %w", err)
 		}
 		roles = append(roles, role)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list user roles rows failed: %w", err)
 	}
 
 	return roles, nil
@@ -247,13 +248,13 @@ ORDER BY r.code;
 func (r *PostgresUserRepository) ReplaceRolesByUserID(ctx context.Context, userID int64, roleCodes []string) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin replace user roles transaction failed: %w", err)
 	}
 	defer tx.Rollback()
 
 	var exists bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM app.users WHERE id = $1);`, userID).Scan(&exists); err != nil {
-		return err
+		return fmt.Errorf("check user exists for role replace failed: %w", err)
 	}
 	if !exists {
 		return sql.ErrNoRows
@@ -261,20 +262,24 @@ func (r *PostgresUserRepository) ReplaceRolesByUserID(ctx context.Context, userI
 
 	roleIDs, err := resolveRoleIDs(ctx, tx, roleCodes)
 	if err != nil {
-		return err
+		return fmt.Errorf("resolve role ids failed: %w", err)
 	}
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM app.user_roles WHERE user_id = $1;`, userID); err != nil {
-		return err
+		return fmt.Errorf("delete existing user roles failed: %w", err)
 	}
 
 	for _, roleID := range roleIDs {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO app.user_roles (user_id, role_id) VALUES ($1, $2);`, userID, roleID); err != nil {
-			return err
+			return fmt.Errorf("insert user role failed: %w", err)
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit replace user roles transaction failed: %w", err)
+	}
+
+	return nil
 }
 
 func (r *PostgresUserRepository) ValidateRoleCodes(ctx context.Context, roleCodes []string) error {
@@ -285,7 +290,7 @@ func (r *PostgresUserRepository) ValidateRoleCodes(ctx context.Context, roleCode
 
 	rows, err := r.db.QueryContext(ctx, `SELECT code FROM app.roles WHERE code = ANY($1);`, pq.Array(normalized))
 	if err != nil {
-		return err
+		return fmt.Errorf("validate role codes query failed: %w", err)
 	}
 	defer rows.Close()
 
@@ -293,12 +298,12 @@ func (r *PostgresUserRepository) ValidateRoleCodes(ctx context.Context, roleCode
 	for rows.Next() {
 		var code string
 		if err := rows.Scan(&code); err != nil {
-			return err
+			return fmt.Errorf("validate role codes scan failed: %w", err)
 		}
 		existing[code] = struct{}{}
 	}
 	if err := rows.Err(); err != nil {
-		return err
+		return fmt.Errorf("validate role codes rows failed: %w", err)
 	}
 
 	for _, code := range normalized {
@@ -322,7 +327,7 @@ func resolveRoleIDs(ctx context.Context, tx *sql.Tx, roleCodes []string) ([]int6
 
 	rows, err := tx.QueryContext(ctx, `SELECT id, code FROM app.roles WHERE code = ANY($1);`, pq.Array(normalized))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve role ids query failed: %w", err)
 	}
 	defer rows.Close()
 
@@ -331,12 +336,12 @@ func resolveRoleIDs(ctx context.Context, tx *sql.Tx, roleCodes []string) ([]int6
 		var id int64
 		var code string
 		if err := rows.Scan(&id, &code); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("resolve role ids scan failed: %w", err)
 		}
 		byCode[code] = id
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve role ids rows failed: %w", err)
 	}
 
 	roleIDs := make([]int64, 0, len(normalized))

@@ -34,7 +34,7 @@ func (h *UserHandler) Create(c *echo.Context) error {
 		case errors.Is(err, service.ErrRoleCodeNotFound):
 			return validationError(c, "one or more role codes are invalid")
 		default:
-			return internalError(c, "failed to create user")
+			return internalError(c, "failed to create user", "user.create", err)
 		}
 	}
 
@@ -47,7 +47,7 @@ func (h *UserHandler) Create(c *echo.Context) error {
 func (h *UserHandler) List(c *echo.Context) error {
 	users, err := h.users.List(c.Request().Context())
 	if err != nil {
-		return internalError(c, "failed to load users")
+		return internalError(c, "failed to load users", "user.list", err)
 	}
 
 	return c.JSON(http.StatusOK, dto.SuccessResponse{
@@ -68,7 +68,7 @@ func (h *UserHandler) GetByID(c *echo.Context) error {
 		case errors.Is(err, service.ErrUserNotFound):
 			return notFoundError(c, "user not found")
 		default:
-			return internalError(c, "failed to load user")
+			return internalError(c, "failed to load user", "user.get_by_id", err, "user_id", id)
 		}
 	}
 
@@ -99,7 +99,7 @@ func (h *UserHandler) Update(c *echo.Context) error {
 		case errors.Is(err, service.ErrUserEmailExists):
 			return conflictError(c, "user email already exists")
 		default:
-			return internalError(c, "failed to update user")
+			return internalError(c, "failed to update user", "user.update", err, "user_id", id)
 		}
 	}
 
@@ -128,7 +128,7 @@ func (h *UserHandler) ReplaceRoles(c *echo.Context) error {
 		case errors.Is(err, service.ErrRoleCodeNotFound):
 			return validationError(c, "one or more role codes are invalid")
 		default:
-			return internalError(c, "failed to update user roles")
+			return internalError(c, "failed to update user roles", "user.replace_roles", err, "user_id", id)
 		}
 	}
 

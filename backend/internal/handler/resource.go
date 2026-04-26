@@ -30,7 +30,7 @@ func (h *ResourceHandler) Create(c *echo.Context) error {
 		case errors.Is(err, service.ErrValidation):
 			return validationError(c, "invalid resource payload")
 		default:
-			return internalError(c, "failed to create resource")
+			return internalError(c, "failed to create resource", "resource.create", err)
 		}
 	}
 
@@ -43,7 +43,7 @@ func (h *ResourceHandler) Create(c *echo.Context) error {
 func (h *ResourceHandler) List(c *echo.Context) error {
 	resources, err := h.resources.List(c.Request().Context())
 	if err != nil {
-		return internalError(c, "failed to load resources")
+		return internalError(c, "failed to load resources", "resource.list", err)
 	}
 
 	return c.JSON(http.StatusOK, dto.SuccessResponse{
@@ -64,7 +64,7 @@ func (h *ResourceHandler) GetByID(c *echo.Context) error {
 		case errors.Is(err, service.ErrResourceNotFound):
 			return notFoundError(c, "resource not found")
 		default:
-			return internalError(c, "failed to load resource")
+			return internalError(c, "failed to load resource", "resource.get_by_id", err, "resource_id", id)
 		}
 	}
 
@@ -93,7 +93,7 @@ func (h *ResourceHandler) Update(c *echo.Context) error {
 		case errors.Is(err, service.ErrResourceNotFound):
 			return notFoundError(c, "resource not found")
 		default:
-			return internalError(c, "failed to update resource")
+			return internalError(c, "failed to update resource", "resource.update", err, "resource_id", id)
 		}
 	}
 

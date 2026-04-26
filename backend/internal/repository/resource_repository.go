@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"resourceflow/backend/internal/model"
 )
@@ -82,7 +83,7 @@ RETURNING id, name, COALESCE(description, ''), category_id, type_id, department_
 		&resource.IsActive,
 	)
 	if err != nil {
-		return model.Resource{}, err
+		return model.Resource{}, fmt.Errorf("create resource query failed: %w", err)
 	}
 
 	resource.DepartmentID = nullableInt64Ptr(departmentID)
@@ -101,7 +102,7 @@ ORDER BY id;
 
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list resources query failed: %w", err)
 	}
 	defer rows.Close()
 
@@ -123,7 +124,7 @@ ORDER BY id;
 			&resource.IsBookable,
 			&resource.IsActive,
 		); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("list resources scan failed: %w", err)
 		}
 		resource.DepartmentID = nullableInt64Ptr(departmentID)
 		resource.Location = nullableStringPtr(location)
@@ -132,7 +133,7 @@ ORDER BY id;
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list resources rows failed: %w", err)
 	}
 
 	return resources, nil
@@ -163,7 +164,7 @@ LIMIT 1;
 		&resource.IsActive,
 	)
 	if err != nil {
-		return model.Resource{}, err
+		return model.Resource{}, fmt.Errorf("find resource by id query failed: %w", err)
 	}
 
 	resource.DepartmentID = nullableInt64Ptr(departmentID)
@@ -220,7 +221,7 @@ RETURNING id, name, COALESCE(description, ''), category_id, type_id, department_
 		&resource.IsActive,
 	)
 	if err != nil {
-		return model.Resource{}, err
+		return model.Resource{}, fmt.Errorf("update resource query failed: %w", err)
 	}
 
 	resource.DepartmentID = nullableInt64Ptr(departmentID)

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"resourceflow/backend/internal/model"
 )
@@ -37,7 +38,7 @@ RETURNING id, name, COALESCE(description, ''), is_active;
 		&department.IsActive,
 	)
 	if err != nil {
-		return model.Department{}, err
+		return model.Department{}, fmt.Errorf("create department query failed: %w", err)
 	}
 
 	return department, nil
@@ -52,7 +53,7 @@ ORDER BY id;
 
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list departments query failed: %w", err)
 	}
 	defer rows.Close()
 
@@ -60,13 +61,13 @@ ORDER BY id;
 	for rows.Next() {
 		var department model.Department
 		if err := rows.Scan(&department.ID, &department.Name, &department.Description, &department.IsActive); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("list departments scan failed: %w", err)
 		}
 		departments = append(departments, department)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list departments rows failed: %w", err)
 	}
 
 	return departments, nil
@@ -88,7 +89,7 @@ LIMIT 1;
 		&department.IsActive,
 	)
 	if err != nil {
-		return model.Department{}, err
+		return model.Department{}, fmt.Errorf("find department by id query failed: %w", err)
 	}
 
 	return department, nil
@@ -113,7 +114,7 @@ RETURNING id, name, COALESCE(description, ''), is_active;
 		&department.IsActive,
 	)
 	if err != nil {
-		return model.Department{}, err
+		return model.Department{}, fmt.Errorf("update department query failed: %w", err)
 	}
 
 	return department, nil

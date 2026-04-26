@@ -17,7 +17,7 @@ func RequireRoles(roles ...string) echo.MiddlewareFunc {
 				return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{
 					Success: false,
 					Error: dto.APIError{
-						Code:    "unauthorized",
+						Code:    dto.ErrorCodeUnauthorized,
 						Message: "authentication required",
 					},
 				})
@@ -27,7 +27,7 @@ func RequireRoles(roles ...string) echo.MiddlewareFunc {
 				return c.JSON(http.StatusForbidden, dto.ErrorResponse{
 					Success: false,
 					Error: dto.APIError{
-						Code:    "forbidden",
+						Code:    dto.ErrorCodeForbidden,
 						Message: "insufficient role",
 					},
 				})

@@ -32,7 +32,7 @@ func (h *ResourceTypeHandler) Create(c *echo.Context) error {
 		case errors.Is(err, service.ErrResourceTypeCodeExists):
 			return conflictError(c, "resource type code already exists")
 		default:
-			return internalError(c, "failed to create resource type")
+			return internalError(c, "failed to create resource type", "resource_type.create", err)
 		}
 	}
 
@@ -45,7 +45,7 @@ func (h *ResourceTypeHandler) Create(c *echo.Context) error {
 func (h *ResourceTypeHandler) List(c *echo.Context) error {
 	resourceTypes, err := h.resourceTypes.List(c.Request().Context())
 	if err != nil {
-		return internalError(c, "failed to load resource types")
+		return internalError(c, "failed to load resource types", "resource_type.list", err)
 	}
 
 	return c.JSON(http.StatusOK, dto.SuccessResponse{
@@ -66,7 +66,7 @@ func (h *ResourceTypeHandler) GetByID(c *echo.Context) error {
 		case errors.Is(err, service.ErrResourceTypeNotFound):
 			return notFoundError(c, "resource type not found")
 		default:
-			return internalError(c, "failed to load resource type")
+			return internalError(c, "failed to load resource type", "resource_type.get_by_id", err, "resource_type_id", id)
 		}
 	}
 
@@ -97,7 +97,7 @@ func (h *ResourceTypeHandler) Update(c *echo.Context) error {
 		case errors.Is(err, service.ErrResourceTypeCodeExists):
 			return conflictError(c, "resource type code already exists")
 		default:
-			return internalError(c, "failed to update resource type")
+			return internalError(c, "failed to update resource type", "resource_type.update", err, "resource_type_id", id)
 		}
 	}
 
