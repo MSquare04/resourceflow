@@ -8,14 +8,16 @@ import (
 )
 
 type Dependencies struct {
-	HealthHandler           *handler.HealthHandler
-	AuthHandler             *handler.AuthHandler
-	DepartmentHandler       *handler.DepartmentHandler
-	UserHandler             *handler.UserHandler
-	ResourceCategoryHandler *handler.ResourceCategoryHandler
-	ResourceTypeHandler     *handler.ResourceTypeHandler
-	ResourceHandler         *handler.ResourceHandler
-	AuthMiddleware          *rfmiddleware.AuthMiddleware
+	HealthHandler               *handler.HealthHandler
+	AuthHandler                 *handler.AuthHandler
+	DepartmentHandler           *handler.DepartmentHandler
+	UserHandler                 *handler.UserHandler
+	ResourceCategoryHandler     *handler.ResourceCategoryHandler
+	ResourceTypeHandler         *handler.ResourceTypeHandler
+	ResourceHandler             *handler.ResourceHandler
+	ResourceAvailabilityHandler *handler.ResourceAvailabilityHandler
+	BookingRuleHandler          *handler.BookingRuleHandler
+	AuthMiddleware              *rfmiddleware.AuthMiddleware
 }
 
 func Register(e *echo.Echo, deps Dependencies) {
@@ -54,4 +56,15 @@ func Register(e *echo.Echo, deps Dependencies) {
 	adminGroup.PUT("/resources/:id", deps.ResourceHandler.Update)
 	authorizedGroup.GET("/resources", deps.ResourceHandler.List)
 	authorizedGroup.GET("/resources/:id", deps.ResourceHandler.GetByID)
+
+	adminGroup.POST("/resources/:id/availability", deps.ResourceAvailabilityHandler.Create)
+	adminGroup.PUT("/resources/:id/availability/:availabilityId", deps.ResourceAvailabilityHandler.Update)
+	adminGroup.DELETE("/resources/:id/availability/:availabilityId", deps.ResourceAvailabilityHandler.Delete)
+	authorizedGroup.GET("/resources/:id/availability", deps.ResourceAvailabilityHandler.ListByResourceID)
+	authorizedGroup.GET("/resources/:id/availability/:availabilityId", deps.ResourceAvailabilityHandler.GetByID)
+
+	adminGroup.POST("/booking-rules", deps.BookingRuleHandler.Create)
+	adminGroup.PUT("/booking-rules/:id", deps.BookingRuleHandler.Update)
+	authorizedGroup.GET("/booking-rules", deps.BookingRuleHandler.List)
+	authorizedGroup.GET("/booking-rules/:id", deps.BookingRuleHandler.GetByID)
 }
