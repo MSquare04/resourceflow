@@ -12,6 +12,7 @@ type BookingRuleRepository interface {
 	Create(ctx context.Context, params CreateBookingRuleParams) (model.BookingRule, error)
 	List(ctx context.Context) ([]model.BookingRule, error)
 	FindByID(ctx context.Context, id int64) (model.BookingRule, error)
+	FindActiveByResourceTypeID(ctx context.Context, resourceTypeID int64) (model.BookingRule, error)
 	Update(ctx context.Context, id int64, params UpdateBookingRuleParams) (model.BookingRule, error)
 }
 
@@ -181,6 +182,46 @@ LIMIT 1;
 	)
 	if err != nil {
 		return model.BookingRule{}, fmt.Errorf("find booking rule by id query failed: %w", err)
+	}
+
+	return rule, nil
+}
+
+func (r *PostgresBookingRuleRepository) FindActiveByResourceTypeID(ctx context.Context, resourceTypeID int64) (model.BookingRule, error) {
+	query := `
+SELECT
+  id,
+  resource_type_id,
+  min_duration_minutes,
+  max_duration_minutes,
+  max_active_bookings_per_user,
+  requires_approval,
+  booking_horizon_days,
+  is_active,
+  created_at,
+  updated_at
+FROM app.booking_rules
+WHERE resource_type_id = $1
+  AND is_active = TRUE
+ORDER BY id DESC
+LIMIT 1;
+`
+
+	var rule model.BookingRule
+	err := r.db.QueryRowContext(ctx, query, resourceTypeID).Scan(
+		&rule.ID,
+		&rule.ResourceTypeID,
+		&rule.MinDurationMinutes,
+		&rule.MaxDurationMinutes,
+		&rule.MaxActiveBookingsPerUser,
+		&rule.RequiresApproval,
+		&rule.BookingHorizonDays,
+		&rule.IsActive,
+		&rule.CreatedAt,
+		&rule.UpdatedAt,
+	)
+	if err != nil {
+		return model.BookingRule{}, fmt.Errorf("find active booking rule by resource type query failed: %w", err)
 	}
 
 	return rule, nil

@@ -22,7 +22,7 @@ import (
 	"resourceflow/backend/internal/service"
 )
 
-const expectedMigrationVersion int64 = 5
+const expectedMigrationVersion int64 = 6
 
 func main() {
 	// Local development convenience: load env from .env if present.
@@ -57,6 +57,7 @@ func main() {
 	resourceRepository := repository.NewResourceRepository(postgres)
 	resourceAvailabilityRepository := repository.NewResourceAvailabilityRepository(postgres)
 	bookingRuleRepository := repository.NewBookingRuleRepository(postgres)
+	bookingRepository := repository.NewBookingRepository(postgres)
 	passwordHasher := auth.NewBcryptHasher()
 	tokenManager := auth.NewTokenManager(
 		cfg.JWT.Secret,
@@ -70,6 +71,7 @@ func main() {
 	resourceService := service.NewResourceService(resourceRepository, resourceTypeRepository)
 	resourceAvailabilityService := service.NewResourceAvailabilityService(resourceAvailabilityRepository, resourceRepository)
 	bookingRuleService := service.NewBookingRuleService(bookingRuleRepository, resourceTypeRepository)
+	bookingService := service.NewBookingService(bookingRepository, resourceRepository, userRepository, bookingRuleRepository)
 
 	router.Register(e, router.Dependencies{
 		HealthHandler:               handler.NewHealthHandler(postgres),
@@ -81,6 +83,7 @@ func main() {
 		ResourceHandler:             handler.NewResourceHandler(resourceService),
 		ResourceAvailabilityHandler: handler.NewResourceAvailabilityHandler(resourceAvailabilityService),
 		BookingRuleHandler:          handler.NewBookingRuleHandler(bookingRuleService),
+		BookingHandler:              handler.NewBookingHandler(bookingService),
 		AuthMiddleware:              rfmiddleware.NewAuthMiddleware(tokenManager),
 	})
 

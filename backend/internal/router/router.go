@@ -17,6 +17,7 @@ type Dependencies struct {
 	ResourceHandler             *handler.ResourceHandler
 	ResourceAvailabilityHandler *handler.ResourceAvailabilityHandler
 	BookingRuleHandler          *handler.BookingRuleHandler
+	BookingHandler              *handler.BookingHandler
 	AuthMiddleware              *rfmiddleware.AuthMiddleware
 }
 
@@ -67,4 +68,13 @@ func Register(e *echo.Echo, deps Dependencies) {
 	adminGroup.PUT("/booking-rules/:id", deps.BookingRuleHandler.Update)
 	authorizedGroup.GET("/booking-rules", deps.BookingRuleHandler.List)
 	authorizedGroup.GET("/booking-rules/:id", deps.BookingRuleHandler.GetByID)
+
+	authorizedGroup.POST("/bookings", deps.BookingHandler.Create)
+	authorizedGroup.GET("/bookings", deps.BookingHandler.List)
+	authorizedGroup.GET("/bookings/:id", deps.BookingHandler.GetByID)
+	authorizedGroup.GET("/my/bookings", deps.BookingHandler.MyList)
+	authorizedGroup.POST("/bookings/:id/cancel", deps.BookingHandler.Cancel)
+	authorizedGroup.POST("/bookings/:id/approve", deps.BookingHandler.Approve)
+	authorizedGroup.POST("/bookings/:id/reject", deps.BookingHandler.Reject)
+	authorizedGroup.POST("/bookings/:id/complete", deps.BookingHandler.Complete)
 }
