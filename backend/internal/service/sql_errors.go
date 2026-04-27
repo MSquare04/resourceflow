@@ -13,3 +13,11 @@ func isCheckViolation(err error) bool {
 	}
 	return false
 }
+
+func isExclusionViolation(err error) bool {
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		return pqErr.Code == "23P01"
+	}
+	return false
+}

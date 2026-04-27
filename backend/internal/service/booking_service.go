@@ -147,11 +147,12 @@ func (s *BookingService) Create(ctx context.Context, userID int64, req dto.Creat
 	}
 
 	horizonBoundary := time.Now().UTC().AddDate(0, 0, int(rule.BookingHorizonDays))
-	if startAt.After(horizonBoundary) {
+	if endAt.After(horizonBoundary) {
 		logBookingRejection(ctx, "booking create rejected: booking horizon exceeded",
 			"resource_id", req.ResourceID,
 			"actor_user_id", userID,
 			"start_at", startAt,
+			"end_at", endAt,
 			"horizon_boundary", horizonBoundary,
 			"rule_booking_horizon_days", rule.BookingHorizonDays,
 		)
@@ -186,6 +187,15 @@ func (s *BookingService) Create(ctx context.Context, userID int64, req dto.Creat
 		Status:     status,
 	})
 	if err != nil {
+		if isExclusionViolation(err) {
+			logBookingRejection(ctx, "booking create rejected: overlap detected by database constraint",
+				"resource_id", req.ResourceID,
+				"actor_user_id", userID,
+				"start_at", startAt,
+				"end_at", endAt,
+			)
+			return dto.BookingResponse{}, ErrBookingConflict
+		}
 		if isForeignKeyViolation(err) || isCheckViolation(err) {
 			return dto.BookingResponse{}, ErrValidation
 		}
@@ -288,15 +298,24 @@ func (s *BookingService) Cancel(ctx context.Context, id int64, actorUserID int64
 	}
 
 	now := time.Now().UTC()
-	updated, err := s.bookings.UpdateStatus(ctx, id, repository.UpdateBookingStatusParams{
+	updated, statusFrom, err := s.bookings.TransitionStatus(ctx, id, []string{
+		model.BookingStatusPending,
+		model.BookingStatusConfirmed,
+	}, repository.UpdateBookingStatusParams{
 		Status:           model.BookingStatusCancelled,
-		ApprovedByUserID: booking.ApprovedByUserID,
-		ApprovedAt:       booking.ApprovedAt,
+		ApprovedByUserID: nil,
+		ApprovedAt:       nil,
 		CancelledAt:      &now,
 		CompletedAt:      nil,
 	})
 	if err != nil {
-		return dto.BookingResponse{}, normalizeBookingUpdateError(err)
+		return dto.BookingResponse{}, s.handleBookingTransitionFailure(
+			ctx,
+			id,
+			actorUserID,
+			model.BookingStatusCancelled,
+			err,
+		)
 	}
 
 	logBookingEvent(ctx, "booking cancelled",
@@ -305,7 +324,7 @@ func (s *BookingService) Cancel(ctx context.Context, id int64, actorUserID int64
 		"booking_user_id", updated.UserID,
 		"actor_user_id", actorUserID,
 		"status", updated.Status,
-		"status_from", booking.Status,
+		"status_from", statusFrom,
 		"status_to", updated.Status,
 		"start_at", updated.StartAt.UTC(),
 		"end_at", updated.EndAt.UTC(),
@@ -340,15 +359,23 @@ func (s *BookingService) Complete(ctx context.Context, id int64, actorUserID int
 	}
 
 	now := time.Now().UTC()
-	updated, err := s.bookings.UpdateStatus(ctx, id, repository.UpdateBookingStatusParams{
+	updated, statusFrom, err := s.bookings.TransitionStatus(ctx, id, []string{
+		model.BookingStatusConfirmed,
+	}, repository.UpdateBookingStatusParams{
 		Status:           model.BookingStatusCompleted,
-		ApprovedByUserID: booking.ApprovedByUserID,
-		ApprovedAt:       booking.ApprovedAt,
+		ApprovedByUserID: nil,
+		ApprovedAt:       nil,
 		CancelledAt:      booking.CancelledAt,
 		CompletedAt:      &now,
 	})
 	if err != nil {
-		return dto.BookingResponse{}, normalizeBookingUpdateError(err)
+		return dto.BookingResponse{}, s.handleBookingTransitionFailure(
+			ctx,
+			id,
+			actorUserID,
+			model.BookingStatusCompleted,
+			err,
+		)
 	}
 
 	logBookingEvent(ctx, "booking completed",
@@ -357,7 +384,7 @@ func (s *BookingService) Complete(ctx context.Context, id int64, actorUserID int
 		"booking_user_id", updated.UserID,
 		"actor_user_id", actorUserID,
 		"status", updated.Status,
-		"status_from", booking.Status,
+		"status_from", statusFrom,
 		"status_to", updated.Status,
 		"start_at", updated.StartAt.UTC(),
 		"end_at", updated.EndAt.UTC(),
@@ -367,28 +394,10 @@ func (s *BookingService) Complete(ctx context.Context, id int64, actorUserID int
 }
 
 func (s *BookingService) Approve(ctx context.Context, id int64, approverUserID int64) (dto.BookingResponse, error) {
-	booking, err := s.getBookingForAction(ctx, id)
-	if err != nil {
-		return dto.BookingResponse{}, err
-	}
-
-	if booking.Status != model.BookingStatusPending {
-		logBookingRejection(ctx, "booking approve rejected: invalid status transition",
-			"booking_id", booking.ID,
-			"resource_id", booking.ResourceID,
-			"booking_user_id", booking.UserID,
-			"actor_user_id", approverUserID,
-			"status", booking.Status,
-			"status_from", booking.Status,
-			"status_to", model.BookingStatusConfirmed,
-			"start_at", booking.StartAt.UTC(),
-			"end_at", booking.EndAt.UTC(),
-		)
-		return dto.BookingResponse{}, ErrBookingInvalidStatusAction
-	}
-
 	now := time.Now().UTC()
-	updated, err := s.bookings.UpdateStatus(ctx, id, repository.UpdateBookingStatusParams{
+	updated, statusFrom, err := s.bookings.TransitionStatus(ctx, id, []string{
+		model.BookingStatusPending,
+	}, repository.UpdateBookingStatusParams{
 		Status:           model.BookingStatusConfirmed,
 		ApprovedByUserID: &approverUserID,
 		ApprovedAt:       &now,
@@ -396,7 +405,13 @@ func (s *BookingService) Approve(ctx context.Context, id int64, approverUserID i
 		CompletedAt:      nil,
 	})
 	if err != nil {
-		return dto.BookingResponse{}, normalizeBookingUpdateError(err)
+		return dto.BookingResponse{}, s.handleBookingTransitionFailure(
+			ctx,
+			id,
+			approverUserID,
+			model.BookingStatusConfirmed,
+			err,
+		)
 	}
 
 	logBookingEvent(ctx, "booking approved",
@@ -405,7 +420,7 @@ func (s *BookingService) Approve(ctx context.Context, id int64, approverUserID i
 		"booking_user_id", updated.UserID,
 		"actor_user_id", approverUserID,
 		"status", updated.Status,
-		"status_from", booking.Status,
+		"status_from", statusFrom,
 		"status_to", updated.Status,
 		"start_at", updated.StartAt.UTC(),
 		"end_at", updated.EndAt.UTC(),
@@ -415,28 +430,10 @@ func (s *BookingService) Approve(ctx context.Context, id int64, approverUserID i
 }
 
 func (s *BookingService) Reject(ctx context.Context, id int64, approverUserID int64) (dto.BookingResponse, error) {
-	booking, err := s.getBookingForAction(ctx, id)
-	if err != nil {
-		return dto.BookingResponse{}, err
-	}
-
-	if booking.Status != model.BookingStatusPending {
-		logBookingRejection(ctx, "booking reject rejected: invalid status transition",
-			"booking_id", booking.ID,
-			"resource_id", booking.ResourceID,
-			"booking_user_id", booking.UserID,
-			"actor_user_id", approverUserID,
-			"status", booking.Status,
-			"status_from", booking.Status,
-			"status_to", model.BookingStatusRejected,
-			"start_at", booking.StartAt.UTC(),
-			"end_at", booking.EndAt.UTC(),
-		)
-		return dto.BookingResponse{}, ErrBookingInvalidStatusAction
-	}
-
 	now := time.Now().UTC()
-	updated, err := s.bookings.UpdateStatus(ctx, id, repository.UpdateBookingStatusParams{
+	updated, statusFrom, err := s.bookings.TransitionStatus(ctx, id, []string{
+		model.BookingStatusPending,
+	}, repository.UpdateBookingStatusParams{
 		Status:           model.BookingStatusRejected,
 		ApprovedByUserID: &approverUserID,
 		ApprovedAt:       &now,
@@ -444,7 +441,13 @@ func (s *BookingService) Reject(ctx context.Context, id int64, approverUserID in
 		CompletedAt:      nil,
 	})
 	if err != nil {
-		return dto.BookingResponse{}, normalizeBookingUpdateError(err)
+		return dto.BookingResponse{}, s.handleBookingTransitionFailure(
+			ctx,
+			id,
+			approverUserID,
+			model.BookingStatusRejected,
+			err,
+		)
 	}
 
 	logBookingEvent(ctx, "booking rejected",
@@ -453,7 +456,7 @@ func (s *BookingService) Reject(ctx context.Context, id int64, approverUserID in
 		"booking_user_id", updated.UserID,
 		"actor_user_id", approverUserID,
 		"status", updated.Status,
-		"status_from", booking.Status,
+		"status_from", statusFrom,
 		"status_to", updated.Status,
 		"start_at", updated.StartAt.UTC(),
 		"end_at", updated.EndAt.UTC(),
@@ -482,10 +485,47 @@ func normalizeBookingUpdateError(err error) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrBookingNotFound
 	}
+	if isExclusionViolation(err) {
+		return ErrBookingConflict
+	}
 	if isForeignKeyViolation(err) || isCheckViolation(err) {
 		return ErrValidation
 	}
 	return err
+}
+
+func (s *BookingService) handleBookingTransitionFailure(
+	ctx context.Context,
+	bookingID int64,
+	actorUserID int64,
+	statusTo string,
+	err error,
+) error {
+	if !errors.Is(err, sql.ErrNoRows) {
+		return normalizeBookingUpdateError(err)
+	}
+
+	current, findErr := s.bookings.FindByID(ctx, bookingID)
+	if findErr != nil {
+		if errors.Is(findErr, sql.ErrNoRows) {
+			return ErrBookingNotFound
+		}
+		return findErr
+	}
+
+	logBookingRejection(ctx, "booking action rejected: invalid status transition",
+		"booking_id", current.ID,
+		"resource_id", current.ResourceID,
+		"booking_user_id", current.UserID,
+		"actor_user_id", actorUserID,
+		"status", current.Status,
+		"status_from", current.Status,
+		"status_to", statusTo,
+		"start_at", current.StartAt.UTC(),
+		"end_at", current.EndAt.UTC(),
+	)
+
+	return ErrBookingInvalidStatusAction
 }
 
 func validateBookingRange(startAt, endAt time.Time) (time.Time, time.Time, error) {

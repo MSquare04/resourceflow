@@ -19,6 +19,7 @@ type BookingRepository interface {
 	HasConflict(ctx context.Context, resourceID int64, startAt, endAt time.Time, statuses []string) (bool, error)
 	IsCoveredByAvailability(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error)
 	UpdateStatus(ctx context.Context, id int64, params UpdateBookingStatusParams) (model.Booking, error)
+	TransitionStatus(ctx context.Context, id int64, expectedFrom []string, params UpdateBookingStatusParams) (model.Booking, string, error)
 }
 
 type PostgresBookingRepository struct {
@@ -296,6 +297,111 @@ RETURNING
 	}
 
 	return booking, nil
+}
+
+func (r *PostgresBookingRepository) TransitionStatus(
+	ctx context.Context,
+	id int64,
+	expectedFrom []string,
+	params UpdateBookingStatusParams,
+) (model.Booking, string, error) {
+	query := `
+WITH current AS (
+  SELECT b.id, b.status
+  FROM app.bookings b
+  WHERE b.id = $1
+    AND b.status = ANY($2)
+  FOR UPDATE
+),
+updated AS (
+  UPDATE app.bookings b
+  SET status = $3,
+      approved_by_user_id = COALESCE($4, b.approved_by_user_id),
+      approved_at = COALESCE($5, b.approved_at),
+      cancelled_at = $6,
+      completed_at = $7,
+      updated_at = NOW()
+  FROM current c
+  WHERE b.id = c.id
+  RETURNING
+    b.id,
+    b.resource_id,
+    b.user_id,
+    b.start_at,
+    b.end_at,
+    b.purpose,
+    b.status,
+    b.approved_by_user_id,
+    b.approved_at,
+    b.cancelled_at,
+    b.completed_at,
+    b.created_at,
+    b.updated_at,
+    c.status AS status_from
+)
+SELECT
+  id,
+  resource_id,
+  user_id,
+  start_at,
+  end_at,
+  purpose,
+  status,
+  approved_by_user_id,
+  approved_at,
+  cancelled_at,
+  completed_at,
+  created_at,
+  updated_at,
+  status_from
+FROM updated;
+`
+
+	var booking model.Booking
+	var statusFrom string
+	var purpose sql.NullString
+	var approvedByUserID sql.NullInt64
+	var approvedAt sql.NullTime
+	var cancelledAt sql.NullTime
+	var completedAt sql.NullTime
+
+	err := r.db.QueryRowContext(
+		ctx,
+		query,
+		id,
+		pq.Array(expectedFrom),
+		params.Status,
+		nullableInt64(params.ApprovedByUserID),
+		nullableTime(params.ApprovedAt),
+		nullableTime(params.CancelledAt),
+		nullableTime(params.CompletedAt),
+	).Scan(
+		&booking.ID,
+		&booking.ResourceID,
+		&booking.UserID,
+		&booking.StartAt,
+		&booking.EndAt,
+		&purpose,
+		&booking.Status,
+		&approvedByUserID,
+		&approvedAt,
+		&cancelledAt,
+		&completedAt,
+		&booking.CreatedAt,
+		&booking.UpdatedAt,
+		&statusFrom,
+	)
+	if err != nil {
+		return model.Booking{}, "", fmt.Errorf("transition booking status query failed: %w", err)
+	}
+
+	booking.Purpose = nullableStringPtr(purpose)
+	booking.ApprovedByUserID = nullableInt64Ptr(approvedByUserID)
+	booking.ApprovedAt = nullableTimePtr(approvedAt)
+	booking.CancelledAt = nullableTimePtr(cancelledAt)
+	booking.CompletedAt = nullableTimePtr(completedAt)
+
+	return booking, statusFrom, nil
 }
 
 type bookingScanner interface {
