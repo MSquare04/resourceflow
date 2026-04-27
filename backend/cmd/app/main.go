@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"time"
 
@@ -35,6 +36,22 @@ func main() {
 	e := echo.New()
 	e.Use(echomw.Recover())
 	e.Use(echomw.RequestID())
+	e.Use(echomw.CORSWithConfig(echomw.CORSConfig{
+		AllowOrigins: []string{
+			"http://localhost:5173",
+		},
+		AllowMethods: []string{
+			http.MethodGet,
+			http.MethodPost,
+			http.MethodPut,
+			http.MethodDelete,
+			http.MethodOptions,
+		},
+		AllowHeaders: []string{
+			echo.HeaderAuthorization,
+			echo.HeaderContentType,
+		},
+	}))
 	e.Use(rfmiddleware.RequestLogger(appLogger))
 
 	postgres, err := db.NewPostgres(cfg.Postgres)
