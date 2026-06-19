@@ -12,6 +12,7 @@ type IconName =
   | "dashboard"
   | "resources"
   | "bookings"
+  | "allBookings"
   | "users"
   | "rules"
   | "collapse"
@@ -31,6 +32,7 @@ const links: NavigationLink[] = [
   { to: "/", labelKey: "navigation.dashboard", icon: "dashboard", end: true },
   { to: "/resources", labelKey: "navigation.resources", icon: "resources" },
   { to: "/my-bookings", labelKey: "navigation.myBookings", icon: "bookings" },
+  { to: "/bookings", labelKey: "navigation.bookings", icon: "allBookings", roles: ["admin", "manager"] },
   { to: "/users", labelKey: "navigation.users", icon: "users", roles: ["admin"] },
   { to: "/booking-rules", labelKey: "navigation.bookingRules", icon: "rules", roles: ["admin"] },
 ];
@@ -75,6 +77,17 @@ function AppIcon({ name }: { name: IconName }): JSX.Element {
           <path d="M4 10h16" />
           <path d="M8 14h3" />
           <path d="M13 14h3" />
+        </svg>
+      );
+    case "allBookings":
+      return (
+        <svg {...commonProps}>
+          <path d="M7 3v4" />
+          <path d="M17 3v4" />
+          <rect x="4" y="5.5" width="16" height="14.5" rx="2" />
+          <path d="M4 10h16" />
+          <path d="M8 14h8" />
+          <path d="M8 17h5" />
         </svg>
       );
     case "users":

@@ -4,6 +4,7 @@ import { ProtectedRoute } from "../components/ProtectedRoute";
 import { RoleGuard } from "../components/RoleGuard";
 import { AppLayout } from "../layouts/AppLayout";
 import { BookingRulesPage } from "../pages/BookingRulesPage";
+import { BookingsPage } from "../pages/BookingsPage";
 import { DashboardPage } from "../pages/DashboardPage";
 import { ForbiddenPage } from "../pages/ForbiddenPage";
 import { LoginPage } from "../pages/LoginPage";
@@ -24,6 +25,10 @@ export function AppRouter(): JSX.Element {
           <Route path="/resources/:id" element={<ResourceDetailsPage />} />
           <Route path="/my-bookings" element={<MyBookingsPage />} />
           <Route path="/forbidden" element={<ForbiddenPage />} />
+
+          <Route element={<RoleGuard allowedRoles={["admin", "manager"]} />}>
+            <Route path="/bookings" element={<BookingsPage />} />
+          </Route>
 
           <Route element={<RoleGuard allowedRoles={["admin"]} />}>
             <Route path="/users" element={<UsersPage />} />

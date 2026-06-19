@@ -5,8 +5,24 @@ export function listMyBookings(): Promise<Booking[]> {
   return apiRequest<Booking[]>("/my/bookings");
 }
 
+export function listBookings(): Promise<Booking[]> {
+  return apiRequest<Booking[]>("/bookings");
+}
+
 export function cancelBooking(id: number): Promise<Booking> {
   return apiRequest<Booking>(`/bookings/${id}/cancel`, {
+    method: "POST",
+  });
+}
+
+export function approveBooking(id: number): Promise<Booking> {
+  return apiRequest<Booking>(`/bookings/${id}/approve`, {
+    method: "POST",
+  });
+}
+
+export function rejectBooking(id: number): Promise<Booking> {
+  return apiRequest<Booking>(`/bookings/${id}/reject`, {
     method: "POST",
   });
 }
