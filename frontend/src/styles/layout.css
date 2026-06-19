@@ -1,0 +1,87 @@
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+}
+
+.sidebar {
+  background: linear-gradient(180deg, #0f2535 0%, #102a3f 100%);
+  color: #e5f1ff;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.brand {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.menu {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.menu-link {
+  color: #d4e6ff;
+  text-decoration: none;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  transition: background-color 0.2s ease;
+}
+
+.menu-link:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.menu-link.active {
+  background: rgba(11, 114, 133, 0.55);
+  color: #fff;
+}
+
+.main-area {
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding: 1rem 1.5rem;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(5px);
+}
+
+.title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.content {
+  padding: 1.5rem;
+}
+
+.content > section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 1.25rem;
+}
+
+@media (max-width: 960px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    padding: 1rem;
+  }
+
+  .menu {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
