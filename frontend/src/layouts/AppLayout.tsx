@@ -29,7 +29,7 @@ interface NavigationLink {
 }
 
 const links: NavigationLink[] = [
-  { to: "/", labelKey: "navigation.dashboard", icon: "dashboard", end: true },
+  { to: "/dashboard", labelKey: "navigation.dashboard", icon: "dashboard", end: true },
   { to: "/resources", labelKey: "navigation.resources", icon: "resources" },
   { to: "/my-bookings", labelKey: "navigation.myBookings", icon: "bookings" },
   { to: "/bookings", labelKey: "navigation.bookings", icon: "allBookings", roles: ["admin", "manager"] },

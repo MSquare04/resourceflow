@@ -226,12 +226,22 @@ export function BookingsPage(): JSX.Element {
               {visibleBookings.map((booking) => (
                 <article key={booking.id} className="booking-card" role="listitem">
                   <div className="booking-card__header">
-                    <div className="booking-card__heading">
-                      <h3 className="booking-card__title">{booking.resource_name}</h3>
-                      <p className="booking-card__purpose">{booking.purpose || t("pages.bookings.noPurpose")}</p>
-                    </div>
-
                     <StatusBadge status={booking.status} />
+                  </div>
+
+                  <div className="booking-card__heading">
+                    <h3 className="booking-card__title">{booking.resource_name}</h3>
+                  </div>
+
+                  <div className="booking-card__time-block">
+                    <div className="booking-card__time-item">
+                      <span className="booking-card__time-label">{t("pages.bookings.fields.startAt")}</span>
+                      <strong>{formatUtcDateTime(booking.start_at)}</strong>
+                    </div>
+                    <div className="booking-card__time-item">
+                      <span className="booking-card__time-label">{t("pages.bookings.fields.endAt")}</span>
+                      <strong>{formatUtcDateTime(booking.end_at)}</strong>
+                    </div>
                   </div>
 
                   <dl className="booking-card__meta">
@@ -240,20 +250,8 @@ export function BookingsPage(): JSX.Element {
                       <dd>{booking.user_full_name || t("pages.bookings.unknownUser")}</dd>
                     </div>
                     <div>
-                      <dt>{t("pages.bookings.fields.startAt")}</dt>
-                      <dd>{formatUtcDateTime(booking.start_at)}</dd>
-                    </div>
-                    <div>
-                      <dt>{t("pages.bookings.fields.endAt")}</dt>
-                      <dd>{formatUtcDateTime(booking.end_at)}</dd>
-                    </div>
-                    <div>
                       <dt>{t("pages.bookings.fields.purpose")}</dt>
                       <dd>{booking.purpose || t("pages.bookings.noPurpose")}</dd>
-                    </div>
-                    <div>
-                      <dt>{t("pages.bookings.fields.createdAt")}</dt>
-                      <dd>{formatUtcDateTime(booking.created_at)}</dd>
                     </div>
                   </dl>
 
@@ -297,6 +295,10 @@ export function BookingsPage(): JSX.Element {
                       </button>
                     ) : null}
                   </div>
+
+                  <p className="booking-card__footer-meta muted">
+                    {t("pages.bookings.fields.createdAt")}: {formatUtcDateTime(booking.created_at)}
+                  </p>
                 </article>
               ))}
             </div>
@@ -306,3 +308,4 @@ export function BookingsPage(): JSX.Element {
     </section>
   );
 }
+

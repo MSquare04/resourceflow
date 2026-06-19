@@ -9,8 +9,7 @@ interface LanguageSwitcherProps {
 export function LanguageSwitcher({ variant = "default" }: LanguageSwitcherProps): JSX.Element {
   const { i18n, t } = useTranslation();
   const currentLanguage = (i18n.resolvedLanguage ?? "ru") as SupportedLanguage;
-
-  return (
+  const switcher = (
     <div
       className={`language-switcher language-switcher--${variant}`}
       role="group"
@@ -33,4 +32,15 @@ export function LanguageSwitcher({ variant = "default" }: LanguageSwitcherProps)
       })}
     </div>
   );
+
+  if (variant === "dropdown") {
+    return (
+      <div className="language-switcher-row">
+        <span className="language-switcher-row__label">{t("language.label")}</span>
+        {switcher}
+      </div>
+    );
+  }
+
+  return switcher;
 }

@@ -315,6 +315,19 @@
   padding-top: 0.1rem;
 }
 
+.language-switcher-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.language-switcher-row__label {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
 .profile-dropdown__logout {
   display: inline-flex;
   align-items: center;
@@ -418,8 +431,16 @@
 }
 
 .language-switcher--dropdown {
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   justify-content: flex-start;
+}
+
+@media (max-width: 767px) {
+  .language-switcher-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 
 .app-shell.sidebar-collapsed .brand,

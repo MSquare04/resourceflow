@@ -20,7 +20,8 @@ export function AppRouter(): JSX.Element {
 
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
-          <Route path="/" element={<DashboardPage />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/resources" element={<ResourcesPage />} />
           <Route path="/resources/:id" element={<ResourceDetailsPage />} />
           <Route path="/my-bookings" element={<MyBookingsPage />} />
