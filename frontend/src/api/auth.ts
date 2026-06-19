@@ -1,4 +1,4 @@
-import type { LoginResponse } from "../types/auth";
+import type { CurrentUserResponse, LoginResponse } from "../types/auth";
 import { apiRequest } from "./client";
 
 interface LoginPayload {
@@ -12,4 +12,8 @@ export function login(payload: LoginPayload): Promise<LoginResponse> {
     skipAuth: true,
     body: JSON.stringify(payload),
   });
+}
+
+export function getCurrentUser(): Promise<CurrentUserResponse> {
+  return apiRequest<CurrentUserResponse>("/auth/me");
 }

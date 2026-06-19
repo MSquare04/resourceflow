@@ -1,20 +1,19 @@
 import { FormEvent, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 
-import { login } from "../api/auth";
+import { useAuth } from "../auth/AuthContext";
 import { ApiError } from "../api/client";
-import { isAuthenticated } from "../utils/auth";
-import { storage } from "../utils/storage";
 
 export function LoginPage(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
+  const { isAuthenticated, login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (isAuthenticated()) {
+  if (isAuthenticated) {
     return <Navigate to="/" replace />;
   }
 
@@ -26,8 +25,7 @@ export function LoginPage(): JSX.Element {
     setLoading(true);
 
     try {
-      const data = await login({ email: email.trim(), password });
-      storage.setAccessToken(data.access_token);
+      await login({ email: email.trim(), password });
       navigate(redirectTo, { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {

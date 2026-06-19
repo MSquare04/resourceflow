@@ -8,6 +8,10 @@ function normalizeBaseUrl(baseUrl: string): string {
 
 const API_BASE_URL = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL);
 
+type UnauthorizedCallback = () => void;
+
+let onUnauthorized: UnauthorizedCallback | null = null;
+
 export class ApiError extends Error {
   status: number;
   code?: string;
@@ -21,6 +25,10 @@ export class ApiError extends Error {
 
 interface RequestOptions extends RequestInit {
   skipAuth?: boolean;
+}
+
+export function setUnauthorizedCallback(callback: UnauthorizedCallback | null): void {
+  onUnauthorized = callback;
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -43,6 +51,10 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const data = raw ? JSON.parse(raw) : null;
 
   if (!response.ok) {
+    if (response.status === 401 && !options.skipAuth) {
+      onUnauthorized?.();
+    }
+
     const message = data?.error?.message ?? `Request failed with status ${response.status}`;
     const code = data?.error?.code;
     throw new ApiError(message, response.status, code);

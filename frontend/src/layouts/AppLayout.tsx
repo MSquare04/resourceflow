@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
-import { logout } from "../utils/auth";
+import { useAuth } from "../auth/AuthContext";
 
 const links = [
   { to: "/", label: "Dashboard", end: true },
@@ -12,6 +12,7 @@ const links = [
 
 export function AppLayout(): JSX.Element {
   const navigate = useNavigate();
+  const { logout, user } = useAuth();
 
   const handleLogout = (): void => {
     logout();
@@ -38,9 +39,12 @@ export function AppLayout(): JSX.Element {
       <div className="main-area">
         <header className="header">
           <h1 className="title">Workspace</h1>
-          <button type="button" className="btn btn-secondary" onClick={handleLogout}>
-            Logout
-          </button>
+          <div className="header-actions">
+            <span className="muted">{user?.full_name || user?.email}</span>
+            <button type="button" className="btn btn-secondary" onClick={handleLogout}>
+              Logout
+            </button>
+          </div>
         </header>
         <main className="content">
           <Outlet />

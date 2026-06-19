@@ -14,3 +14,7 @@ export interface LoginResponse {
   expires_at: string;
   user: AuthUser;
 }
+
+export interface CurrentUserResponse {
+  user: AuthUser;
+}
