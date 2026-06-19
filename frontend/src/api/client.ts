@@ -1,6 +1,12 @@
 import { storage } from "../utils/storage";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:18080/api/v1";
+const DEFAULT_API_BASE_URL = "/api/v1";
+
+function normalizeBaseUrl(baseUrl: string): string {
+  return baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+}
+
+const API_BASE_URL = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL);
 
 export class ApiError extends Error {
   status: number;
