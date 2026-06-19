@@ -3,10 +3,12 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 
 import { AuthProvider } from "./auth/AuthContext";
+import "./i18n";
 import { AppRouter } from "./router/AppRouter";
 import "./styles/global.css";
 import "./styles/layout.css";
 import "./styles/forms.css";
+import "./styles/ui.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

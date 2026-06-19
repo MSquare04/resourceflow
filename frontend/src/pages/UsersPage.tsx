@@ -1,8 +1,12 @@
+import { useTranslation } from "react-i18next";
+
 export function UsersPage(): JSX.Element {
+  const { t } = useTranslation();
+
   return (
     <section>
-      <h2>Users</h2>
-      <p>Users page placeholder (admin area foundation).</p>
+      <h2>{t("pages.users.title")}</h2>
+      <p>{t("pages.users.description")}</p>
     </section>
   );
 }

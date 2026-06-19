@@ -1,4 +1,5 @@
 import { storage } from "../utils/storage";
+import i18n from "../i18n";
 
 const DEFAULT_API_BASE_URL = "/api/v1";
 
@@ -31,6 +32,26 @@ export function setUnauthorizedCallback(callback: UnauthorizedCallback | null): 
   onUnauthorized = callback;
 }
 
+function getFallbackErrorMessage(status: number): string {
+  if (status >= 500) {
+    return i18n.t("system.serverUnavailable");
+  }
+
+  return i18n.t("system.unableToConnect");
+}
+
+function parseResponseBody(raw: string): unknown {
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers = new Headers(options.headers ?? {});
   headers.set("Content-Type", "application/json");
@@ -42,20 +63,26 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     }
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch {
+    throw new ApiError(i18n.t("system.unableToConnect"), 0);
+  }
 
   const raw = await response.text();
-  const data = raw ? JSON.parse(raw) : null;
+  const data = parseResponseBody(raw) as { data?: T; error?: { message?: string; code?: string } } | null;
 
   if (!response.ok) {
     if (response.status === 401 && !options.skipAuth) {
       onUnauthorized?.();
     }
 
-    const message = data?.error?.message ?? `Request failed with status ${response.status}`;
+    const message = data?.error?.message || getFallbackErrorMessage(response.status);
     const code = data?.error?.code;
     throw new ApiError(message, response.status, code);
   }

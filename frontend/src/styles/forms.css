@@ -18,6 +18,13 @@
   margin: 0;
 }
 
+.login-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
 .form-grid {
   margin-top: 1rem;
   display: grid;
@@ -40,4 +47,10 @@
 .field input:focus {
   outline: 2px solid rgba(11, 114, 133, 0.25);
   border-color: var(--accent);
+}
+
+@media (max-width: 640px) {
+  .login-card__header {
+    flex-direction: column;
+  }
 }

@@ -75,6 +75,13 @@ h2 {
   color: var(--text);
 }
 
+.btn-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 .error-text {
   margin: 0;
   color: var(--danger);

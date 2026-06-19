@@ -1,12 +1,15 @@
 import { FormEvent, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext";
 import { ApiError } from "../api/client";
+import { LanguageSwitcher } from "../components/LanguageSwitcher";
 
 export function LoginPage(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useTranslation();
   const { isAuthenticated, login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -31,7 +34,7 @@ export function LoginPage(): JSX.Element {
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError("Unexpected error while login.");
+        setError(t("auth.unexpectedLoginError"));
       }
     } finally {
       setLoading(false);
@@ -41,34 +44,39 @@ export function LoginPage(): JSX.Element {
   return (
     <div className="login-page">
       <div className="login-card">
-        <h1>ResourceFlow</h1>
-        <p className="muted">Sign in to continue</p>
+        <div className="login-card__header">
+          <div>
+            <h1>{t("auth.signInTitle")}</h1>
+            <p className="muted">{t("auth.signInSubtitle")}</p>
+          </div>
+          <LanguageSwitcher variant="default" />
+        </div>
         <form onSubmit={handleSubmit} className="form-grid">
           <label className="field">
-            <span>Email</span>
+            <span>{t("common.email")}</span>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
-              placeholder="you@company.com"
+              placeholder={t("auth.emailPlaceholder")}
             />
           </label>
           <label className="field">
-            <span>Password</span>
+            <span>{t("common.password")}</span>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="current-password"
-              placeholder="Enter password"
+              placeholder={t("auth.passwordPlaceholder")}
             />
           </label>
           {error ? <p className="error-text">{error}</p> : null}
           <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? "Signing in..." : "Sign in"}
+            {loading ? t("auth.signingIn") : t("auth.signIn")}
           </button>
         </form>
       </div>
