@@ -14,7 +14,6 @@ type IconName =
   | "bookings"
   | "users"
   | "rules"
-  | "menu"
   | "collapse"
   | "expand"
   | "logout"
@@ -99,14 +98,6 @@ function AppIcon({ name }: { name: IconName }): JSX.Element {
           <path d="m4.5 9.5 1 1 2-2" />
           <path d="m4.5 14.5 1 1 2-2" />
           <path d="m4.5 19.5 1 1 2-2" />
-        </svg>
-      );
-    case "menu":
-      return (
-        <svg {...commonProps}>
-          <path d="M4 7h16" />
-          <path d="M4 12h16" />
-          <path d="M4 17h16" />
         </svg>
       );
     case "collapse":
@@ -229,6 +220,7 @@ export function AppLayout(): JSX.Element {
   const isTablet = viewportMode === "tablet";
   const isDesktop = viewportMode === "desktop";
   const isOverlayOpen = isMobileDrawerOpen || (isTablet && isTabletSidebarOpen);
+  const breadcrumbTitle = currentPageTitle;
 
   useEffect(() => {
     const handleResize = (): void => {
@@ -361,6 +353,11 @@ export function AppLayout(): JSX.Element {
                 ? t("layout.expandSidebar")
                 : t("layout.collapseSidebar")
             }
+            title={
+              (isDesktop && isSidebarCollapsed) || (isTablet && !isTabletSidebarOpen)
+                ? t("layout.expandSidebar")
+                : t("layout.collapseSidebar")
+            }
             aria-expanded={isTablet ? isTabletSidebarOpen : !isSidebarCollapsed}
             onClick={handleSidebarToggle}
           >
@@ -404,17 +401,30 @@ export function AppLayout(): JSX.Element {
       <div className="main-area">
         <header className="header">
           <div className="header-start">
-            <button
-              type="button"
-              className="sidebar-toggle mobile-sidebar-toggle"
-              aria-label={isMobileDrawerOpen ? t("layout.closeMenu") : t("layout.openMenu")}
-              aria-expanded={isMobileDrawerOpen}
-              aria-controls="app-sidebar"
-              onClick={handleSidebarToggle}
-            >
-              <AppIcon name="menu" />
-            </button>
-            <h1 className="title">{currentPageTitle}</h1>
+            {isMobile ? (
+              <>
+                <button
+                  type="button"
+                  className="sidebar-toggle mobile-sidebar-toggle"
+                  aria-label={isMobileDrawerOpen ? t("layout.closeMenu") : t("layout.openMenu")}
+                  title={isMobileDrawerOpen ? t("layout.closeMenu") : t("layout.openMenu")}
+                  aria-expanded={isMobileDrawerOpen}
+                  aria-controls="app-sidebar"
+                  onClick={handleSidebarToggle}
+                >
+                  <AppIcon name={isMobileDrawerOpen ? "collapse" : "expand"} />
+                </button>
+                <h1 className="title">{currentPageTitle}</h1>
+              </>
+            ) : (
+              <div className="breadcrumb" aria-label={t("layout.breadcrumbLabel")}>
+                <span className="breadcrumb__root">{t("layout.breadcrumbRoot")}</span>
+                <span className="breadcrumb__separator" aria-hidden="true">
+                  /
+                </span>
+                <span className="breadcrumb__current">{breadcrumbTitle}</span>
+              </div>
+            )}
           </div>
 
           <div className="header-profile" ref={profileMenuRef}>

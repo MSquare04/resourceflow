@@ -30,6 +30,8 @@ export const en = {
     expandSidebar: "Expand sidebar",
     openProfileMenu: "Open profile menu",
     closeProfileMenu: "Close profile menu",
+    breadcrumbLabel: "Breadcrumb",
+    breadcrumbRoot: "ResourceFlow",
   },
   navigation: {
     dashboard: "Dashboard",
@@ -96,7 +98,41 @@ export const en = {
     },
     myBookings: {
       title: "My Bookings",
-      description: "My bookings page placeholder.",
+      loading: "Loading your bookings",
+      resultsSummary: "Bookings found: {{count}}",
+      noPurpose: "No purpose provided",
+      notSpecified: "Not specified",
+      fields: {
+        startAt: "Start",
+        endAt: "End",
+        purpose: "Purpose",
+        createdAt: "Created",
+      },
+      filters: {
+        search: "Search",
+        searchPlaceholder: "Search by resource or booking purpose",
+        status: "Status",
+        allStatuses: "All statuses",
+        reset: "Reset filters",
+      },
+      actions: {
+        cancel: "Cancel",
+        complete: "Complete",
+        processing: "Processing...",
+        error: "Unable to process the booking action",
+      },
+      confirmations: {
+        cancel: "Cancel the booking for “{{resourceName}}”?",
+        complete: "Complete the booking for “{{resourceName}}”?",
+      },
+      empty: {
+        title: "No bookings yet",
+        description: "Your bookings will appear here when they become available.",
+      },
+      noResults: {
+        title: "No matching bookings",
+        description: "Try changing the search query or resetting the filters.",
+      },
     },
     users: {
       title: "Users",

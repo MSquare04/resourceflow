@@ -166,6 +166,36 @@
   flex: 1 1 auto;
 }
 
+.breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.breadcrumb__root,
+.breadcrumb__current {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breadcrumb__root {
+  color: var(--muted);
+}
+
+.breadcrumb__current {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.breadcrumb__separator {
+  color: var(--muted);
+}
+
 .title {
   margin: 0;
   display: none;
@@ -369,21 +399,28 @@
 }
 
 .language-switcher--default {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(15, 37, 53, 0.16);
+  box-shadow: 0 8px 24px rgba(15, 37, 53, 0.12);
 }
 
 .language-switcher--default .language-switcher__button {
-  color: #d4e6ff;
+  color: #365066;
 }
 
 .language-switcher--default .language-switcher__button.active {
-  background: rgba(255, 255, 255, 0.18);
+  background: #0f2535;
   color: #fff;
   box-shadow: 0 2px 8px rgba(16, 24, 40, 0.12);
 }
 
+.language-switcher--default .language-switcher__button:hover {
+  background: rgba(11, 114, 133, 0.1);
+  color: #163447;
+}
+
 .language-switcher--default .language-switcher__button:focus-visible {
-  outline-color: rgba(255, 255, 255, 0.55);
+  outline-color: rgba(11, 114, 133, 0.45);
 }
 
 .language-switcher--dropdown {
@@ -565,6 +602,10 @@
 
   .header {
     padding: 0.9rem 1rem;
+  }
+
+  .breadcrumb {
+    display: none;
   }
 
   .title {

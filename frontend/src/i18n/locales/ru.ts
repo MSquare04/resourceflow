@@ -30,6 +30,8 @@ export const ru = {
     expandSidebar: "Развернуть панель",
     openProfileMenu: "Открыть меню профиля",
     closeProfileMenu: "Закрыть меню профиля",
+    breadcrumbLabel: "Навигационная цепочка",
+    breadcrumbRoot: "ResourceFlow",
   },
   navigation: {
     dashboard: "Главная",
@@ -96,7 +98,41 @@ export const ru = {
     },
     myBookings: {
       title: "Мои бронирования",
-      description: "Заглушка страницы моих бронирований.",
+      loading: "Загружаем ваши бронирования",
+      resultsSummary: "Найдено бронирований: {{count}}",
+      noPurpose: "Цель не указана",
+      notSpecified: "Не указано",
+      fields: {
+        startAt: "Начало",
+        endAt: "Окончание",
+        purpose: "Цель",
+        createdAt: "Создано",
+      },
+      filters: {
+        search: "Поиск",
+        searchPlaceholder: "Найти по ресурсу или цели бронирования",
+        status: "Статус",
+        allStatuses: "Все статусы",
+        reset: "Сбросить фильтры",
+      },
+      actions: {
+        cancel: "Отменить",
+        complete: "Завершить",
+        processing: "Обрабатываем...",
+        error: "Не удалось выполнить действие с бронированием",
+      },
+      confirmations: {
+        cancel: "Отменить бронирование ресурса «{{resourceName}}»?",
+        complete: "Завершить бронирование ресурса «{{resourceName}}»?",
+      },
+      empty: {
+        title: "У вас пока нет бронирований",
+        description: "Когда появятся бронирования, они будут отображаться здесь.",
+      },
+      noResults: {
+        title: "Ничего не найдено",
+        description: "Попробуйте изменить поиск или сбросить фильтры.",
+      },
     },
     users: {
       title: "Пользователи",
