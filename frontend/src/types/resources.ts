@@ -27,3 +27,12 @@ export interface ResourceType {
   description: string;
   is_active: boolean;
 }
+
+export interface ResourceAvailability {
+  id: number;
+  resource_id: number;
+  start_at: string;
+  end_at: string;
+  created_at: string;
+  updated_at: string;
+}

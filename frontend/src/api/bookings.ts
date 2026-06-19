@@ -1,4 +1,4 @@
-import type { Booking } from "../types/bookings";
+import type { Booking, CreateBookingPayload } from "../types/bookings";
 import { apiRequest } from "./client";
 
 export function listMyBookings(): Promise<Booking[]> {
@@ -14,5 +14,12 @@ export function cancelBooking(id: number): Promise<Booking> {
 export function completeBooking(id: number): Promise<Booking> {
   return apiRequest<Booking>(`/bookings/${id}/complete`, {
     method: "POST",
+  });
+}
+
+export function createBooking(payload: CreateBookingPayload): Promise<Booking> {
+  return apiRequest<Booking>("/bookings", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }

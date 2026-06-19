@@ -8,6 +8,7 @@ import { DashboardPage } from "../pages/DashboardPage";
 import { ForbiddenPage } from "../pages/ForbiddenPage";
 import { LoginPage } from "../pages/LoginPage";
 import { MyBookingsPage } from "../pages/MyBookingsPage";
+import { ResourceDetailsPage } from "../pages/ResourceDetailsPage";
 import { ResourcesPage } from "../pages/ResourcesPage";
 import { UsersPage } from "../pages/UsersPage";
 
@@ -20,6 +21,7 @@ export function AppRouter(): JSX.Element {
         <Route element={<AppLayout />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/resources" element={<ResourcesPage />} />
+          <Route path="/resources/:id" element={<ResourceDetailsPage />} />
           <Route path="/my-bookings" element={<MyBookingsPage />} />
           <Route path="/forbidden" element={<ForbiddenPage />} />
 

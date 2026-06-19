@@ -17,7 +17,6 @@ type IconName =
   | "collapse"
   | "expand"
   | "logout"
-  | "close"
   | "chevronDown";
 
 interface NavigationLink {
@@ -103,15 +102,13 @@ function AppIcon({ name }: { name: IconName }): JSX.Element {
     case "collapse":
       return (
         <svg {...commonProps}>
-          <path d="M10 6 5 12l5 6" />
-          <path d="M19 5v14" />
+          <path d="m15 6-6 6 6 6" />
         </svg>
       );
     case "expand":
       return (
         <svg {...commonProps}>
-          <path d="m14 6 5 6-5 6" />
-          <path d="M5 5v14" />
+          <path d="m9 6 6 6-6 6" />
         </svg>
       );
     case "logout":
@@ -120,13 +117,6 @@ function AppIcon({ name }: { name: IconName }): JSX.Element {
           <path d="M10 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3" />
           <path d="M14 8l5 4-5 4" />
           <path d="M19 12H9" />
-        </svg>
-      );
-    case "close":
-      return (
-        <svg {...commonProps}>
-          <path d="m6 6 12 12" />
-          <path d="M18 6 6 18" />
         </svg>
       );
     case "chevronDown":
@@ -368,9 +358,10 @@ export function AppLayout(): JSX.Element {
             type="button"
             className="sidebar-toggle mobile-sidebar-close"
             aria-label={t("layout.closeMenu")}
+            title={t("layout.closeMenu")}
             onClick={() => setIsMobileDrawerOpen(false)}
           >
-            <AppIcon name="close" />
+            <AppIcon name="collapse" />
           </button>
         </div>
 

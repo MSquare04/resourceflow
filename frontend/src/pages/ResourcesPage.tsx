@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 
 import { listResourceCategories, listResources, listResourceTypes } from "../api/resources";
 import { EmptyState } from "../components/EmptyState";
@@ -261,7 +262,12 @@ export function ResourcesPage(): JSX.Element {
                   : t("pages.resources.bookable.falseHint");
 
                 return (
-                  <article key={resource.id} className="resource-card" role="listitem">
+                  <Link
+                    key={resource.id}
+                    to={`/resources/${resource.id}`}
+                    className="resource-card resource-card--link"
+                    role="listitem"
+                  >
                     <div className="resource-card__header">
                       <div>
                         <h3 className="resource-card__title">{resource.name}</h3>
@@ -307,7 +313,7 @@ export function ResourcesPage(): JSX.Element {
                         </dd>
                       </div>
                     </dl>
-                  </article>
+                  </Link>
                 );
               })}
             </div>

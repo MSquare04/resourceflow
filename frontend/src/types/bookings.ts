@@ -17,3 +17,10 @@ export interface Booking {
   created_at: string;
   updated_at: string;
 }
+
+export interface CreateBookingPayload {
+  resource_id: number;
+  start_at: string;
+  end_at: string;
+  purpose: string | null;
+}
