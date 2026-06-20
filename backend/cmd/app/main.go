@@ -23,7 +23,7 @@ import (
 	"resourceflow/backend/internal/service"
 )
 
-const expectedMigrationVersion int64 = 7
+const expectedMigrationVersion int64 = 8
 
 func main() {
 	// Local development convenience: load env from .env if present.
@@ -86,7 +86,7 @@ func main() {
 	resourceCategoryService := service.NewResourceCategoryService(resourceCategoryRepository)
 	resourceTypeService := service.NewResourceTypeService(resourceTypeRepository)
 	resourceService := service.NewResourceService(resourceRepository, resourceTypeRepository)
-	resourceAvailabilityService := service.NewResourceAvailabilityService(resourceAvailabilityRepository, resourceRepository)
+	resourceAvailabilityService := service.NewResourceAvailabilityService(resourceAvailabilityRepository, resourceRepository, bookingRepository)
 	bookingRuleService := service.NewBookingRuleService(bookingRuleRepository, resourceTypeRepository)
 	bookingService := service.NewBookingService(bookingRepository, resourceRepository, userRepository, bookingRuleRepository)
 
@@ -97,11 +97,11 @@ func main() {
 		UserHandler:                 handler.NewUserHandler(userService),
 		ResourceCategoryHandler:     handler.NewResourceCategoryHandler(resourceCategoryService),
 		ResourceTypeHandler:         handler.NewResourceTypeHandler(resourceTypeService),
-		ResourceHandler:             handler.NewResourceHandler(resourceService),
+		ResourceHandler:             handler.NewResourceHandler(resourceService, bookingService),
 		ResourceAvailabilityHandler: handler.NewResourceAvailabilityHandler(resourceAvailabilityService),
 		BookingRuleHandler:          handler.NewBookingRuleHandler(bookingRuleService),
 		BookingHandler:              handler.NewBookingHandler(bookingService),
-		AuthMiddleware:              rfmiddleware.NewAuthMiddleware(tokenManager),
+		AuthMiddleware:              rfmiddleware.NewAuthMiddleware(tokenManager, userRepository),
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.HTTP.Host, cfg.HTTP.Port)

@@ -1,5 +1,7 @@
 package dto
 
+import "time"
+
 type CreateResourceRequest struct {
 	Name         string  `json:"name"`
 	Description  string  `json:"description"`
@@ -35,4 +37,9 @@ type ResourceResponse struct {
 	Capacity     *int64  `json:"capacity"`
 	IsBookable   bool    `json:"is_bookable"`
 	IsActive     bool    `json:"is_active"`
+}
+
+type ResourceBusyIntervalResponse struct {
+	StartAt time.Time `json:"start_at"`
+	EndAt   time.Time `json:"end_at"`
 }

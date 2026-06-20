@@ -59,7 +59,7 @@ func (h *AuthHandler) Login(c *echo.Context) error {
 			return c.JSON(http.StatusForbidden, dto.ErrorResponse{
 				Success: false,
 				Error: dto.APIError{
-					Code:    dto.ErrorCodeForbidden,
+					Code:    dto.ErrorCodeInactiveUser,
 					Message: "user account is inactive",
 				},
 			})
@@ -106,7 +106,7 @@ func (h *AuthHandler) Me(c *echo.Context) error {
 			return c.JSON(http.StatusForbidden, dto.ErrorResponse{
 				Success: false,
 				Error: dto.APIError{
-					Code:    dto.ErrorCodeForbidden,
+					Code:    dto.ErrorCodeInactiveUser,
 					Message: "user account is inactive",
 				},
 			})

@@ -57,6 +57,7 @@ func Register(e *echo.Echo, deps Dependencies) {
 	adminGroup.PUT("/resources/:id", deps.ResourceHandler.Update)
 	authorizedGroup.GET("/resources", deps.ResourceHandler.List)
 	authorizedGroup.GET("/resources/:id", deps.ResourceHandler.GetByID)
+	authorizedGroup.GET("/resources/:id/busy-intervals", deps.ResourceHandler.ListBusyIntervals)
 
 	adminGroup.POST("/resources/:id/availability", deps.ResourceAvailabilityHandler.Create)
 	adminGroup.PUT("/resources/:id/availability/:availabilityId", deps.ResourceAvailabilityHandler.Update)

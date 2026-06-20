@@ -13,20 +13,24 @@ import (
 
 var (
 	ErrResourceAvailabilityNotFound = errors.New("resource availability not found")
+	ErrAvailabilityConflict         = errors.New("resource availability conflicts with existing active bookings")
 )
 
 type ResourceAvailabilityService struct {
 	availability repository.ResourceAvailabilityRepository
 	resources    repository.ResourceRepository
+	bookings     repository.BookingRepository
 }
 
 func NewResourceAvailabilityService(
 	availability repository.ResourceAvailabilityRepository,
 	resources repository.ResourceRepository,
+	bookings repository.BookingRepository,
 ) *ResourceAvailabilityService {
 	return &ResourceAvailabilityService{
 		availability: availability,
 		resources:    resources,
+		bookings:     bookings,
 	}
 }
 
@@ -47,7 +51,7 @@ func (s *ResourceAvailabilityService) Create(ctx context.Context, resourceID int
 	})
 	if err != nil {
 		if isForeignKeyViolation(err) || isCheckViolation(err) {
-			return dto.ResourceAvailabilityResponse{}, ErrValidation
+			return dto.ResourceAvailabilityResponse{}, ErrAvailabilityConflict
 		}
 		return dto.ResourceAvailabilityResponse{}, err
 	}
@@ -98,6 +102,12 @@ func (s *ResourceAvailabilityService) Update(ctx context.Context, resourceID int
 	if err := s.ensureResourceCanManageAvailability(ctx, resourceID); err != nil {
 		return dto.ResourceAvailabilityResponse{}, err
 	}
+	if err := s.ensureActiveBookingsRemainCovered(ctx, resourceID, id, &repository.UpdateResourceAvailabilityParams{
+		StartAt: startAt,
+		EndAt:   endAt,
+	}, false); err != nil {
+		return dto.ResourceAvailabilityResponse{}, err
+	}
 
 	availability, err := s.availability.Update(ctx, resourceID, id, repository.UpdateResourceAvailabilityParams{
 		StartAt: startAt,
@@ -108,7 +118,7 @@ func (s *ResourceAvailabilityService) Update(ctx context.Context, resourceID int
 		case errors.Is(err, sql.ErrNoRows):
 			return dto.ResourceAvailabilityResponse{}, ErrResourceAvailabilityNotFound
 		case isForeignKeyViolation(err), isCheckViolation(err):
-			return dto.ResourceAvailabilityResponse{}, ErrValidation
+			return dto.ResourceAvailabilityResponse{}, ErrAvailabilityConflict
 		default:
 			return dto.ResourceAvailabilityResponse{}, err
 		}
@@ -119,6 +129,9 @@ func (s *ResourceAvailabilityService) Update(ctx context.Context, resourceID int
 
 func (s *ResourceAvailabilityService) Delete(ctx context.Context, resourceID int64, id int64) error {
 	if err := s.ensureResourceExists(ctx, resourceID); err != nil {
+		return err
+	}
+	if err := s.ensureActiveBookingsRemainCovered(ctx, resourceID, id, nil, true); err != nil {
 		return err
 	}
 
@@ -163,7 +176,7 @@ func (s *ResourceAvailabilityService) ensureResourceCanManageAvailability(ctx co
 	}
 
 	if !resource.IsActive || !resource.IsBookable {
-		return ErrValidation
+		return ErrAvailabilityConflict
 	}
 
 	return nil
@@ -174,6 +187,75 @@ func validateAvailabilityRange(startAt, endAt time.Time) (time.Time, time.Time, 
 		return time.Time{}, time.Time{}, ErrValidation
 	}
 	return startAt.UTC(), endAt.UTC(), nil
+}
+
+func (s *ResourceAvailabilityService) ensureActiveBookingsRemainCovered(
+	ctx context.Context,
+	resourceID int64,
+	availabilityID int64,
+	updated *repository.UpdateResourceAvailabilityParams,
+	deleting bool,
+) error {
+	currentAvailability, err := s.availability.ListByResourceID(ctx, resourceID)
+	if err != nil {
+		return err
+	}
+
+	nextAvailability := make([]model.ResourceAvailability, 0, len(currentAvailability))
+	found := false
+	for _, interval := range currentAvailability {
+		if interval.ID != availabilityID {
+			nextAvailability = append(nextAvailability, interval)
+			continue
+		}
+
+		found = true
+		if deleting {
+			continue
+		}
+
+		nextAvailability = append(nextAvailability, model.ResourceAvailability{
+			ID:         interval.ID,
+			ResourceID: interval.ResourceID,
+			StartAt:    updated.StartAt,
+			EndAt:      updated.EndAt,
+			CreatedAt:  interval.CreatedAt,
+			UpdatedAt:  interval.UpdatedAt,
+		})
+	}
+
+	if !found {
+		return ErrResourceAvailabilityNotFound
+	}
+
+	bookings, err := s.bookings.List(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, booking := range bookings {
+		if booking.ResourceID != resourceID {
+			continue
+		}
+		if booking.Status != model.BookingStatusPending && booking.Status != model.BookingStatusConfirmed {
+			continue
+		}
+		if isCoveredByAvailabilityIntervals(booking.StartAt.UTC(), booking.EndAt.UTC(), nextAvailability) {
+			continue
+		}
+		return ErrAvailabilityConflict
+	}
+
+	return nil
+}
+
+func isCoveredByAvailabilityIntervals(startAt, endAt time.Time, availability []model.ResourceAvailability) bool {
+	for _, interval := range availability {
+		if !interval.StartAt.UTC().After(startAt) && !interval.EndAt.UTC().Before(endAt) {
+			return true
+		}
+	}
+	return false
 }
 
 func mapResourceAvailabilityResponse(availability model.ResourceAvailability) dto.ResourceAvailabilityResponse {

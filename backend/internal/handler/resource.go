@@ -12,10 +12,14 @@ import (
 
 type ResourceHandler struct {
 	resources *service.ResourceService
+	bookings  *service.BookingService
 }
 
-func NewResourceHandler(resources *service.ResourceService) *ResourceHandler {
-	return &ResourceHandler{resources: resources}
+func NewResourceHandler(resources *service.ResourceService, bookings *service.BookingService) *ResourceHandler {
+	return &ResourceHandler{
+		resources: resources,
+		bookings:  bookings,
+	}
 }
 
 func (h *ResourceHandler) Create(c *echo.Context) error {
@@ -100,5 +104,29 @@ func (h *ResourceHandler) Update(c *echo.Context) error {
 	return c.JSON(http.StatusOK, dto.SuccessResponse{
 		Success: true,
 		Data:    resource,
+	})
+}
+
+func (h *ResourceHandler) ListBusyIntervals(c *echo.Context) error {
+	id, err := parseIDParam(c, "id")
+	if err != nil {
+		return validationError(c, "invalid resource id")
+	}
+
+	intervals, err := h.bookings.ListBusyIntervalsByResourceID(c.Request().Context(), id)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrValidation):
+			return validationError(c, "invalid resource id")
+		case errors.Is(err, service.ErrResourceNotFound):
+			return notFoundError(c, "resource not found")
+		default:
+			return internalError(c, "failed to load busy intervals", "resource.list_busy_intervals", err, "resource_id", id)
+		}
+	}
+
+	return c.JSON(http.StatusOK, dto.SuccessResponse{
+		Success: true,
+		Data:    intervals,
 	})
 }

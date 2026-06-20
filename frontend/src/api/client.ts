@@ -76,14 +76,14 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   const raw = await response.text();
   const data = parseResponseBody(raw) as { data?: T; error?: { message?: string; code?: string } } | null;
+  const code = data?.error?.code;
 
   if (!response.ok) {
-    if (response.status === 401 && !options.skipAuth) {
+    if ((response.status === 401 || (response.status === 403 && code === "inactive_user")) && !options.skipAuth) {
       onUnauthorized?.();
     }
 
     const message = data?.error?.message || getFallbackErrorMessage(response.status);
-    const code = data?.error?.code;
     throw new ApiError(message, response.status, code);
   }
 

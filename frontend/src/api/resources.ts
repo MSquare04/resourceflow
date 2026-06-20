@@ -2,6 +2,7 @@ import type {
   Resource,
   ResourceAvailability,
   ResourceAvailabilityPayload,
+  ResourceBusyInterval,
   ResourceCategory,
   ResourcePayload,
   ResourceType,
@@ -26,6 +27,10 @@ export function getResource(id: number): Promise<Resource> {
 
 export function listResourceAvailability(resourceId: number): Promise<ResourceAvailability[]> {
   return apiRequest<ResourceAvailability[]>(`/resources/${resourceId}/availability`);
+}
+
+export function listResourceBusyIntervals(resourceId: number): Promise<ResourceBusyInterval[]> {
+  return apiRequest<ResourceBusyInterval[]>(`/resources/${resourceId}/busy-intervals`);
 }
 
 export function createResource(payload: ResourcePayload): Promise<Resource> {

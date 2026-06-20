@@ -1,0 +1,2 @@
+DROP TRIGGER IF EXISTS trg_resource_availability_booking_guard ON app.resource_availability;
+DROP FUNCTION IF EXISTS app.ensure_active_bookings_stay_covered_on_availability_change();

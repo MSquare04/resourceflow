@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -8,14 +10,16 @@ import (
 
 	"resourceflow/backend/internal/auth"
 	"resourceflow/backend/internal/dto"
+	"resourceflow/backend/internal/repository"
 )
 
 type AuthMiddleware struct {
 	tokens *auth.TokenManager
+	users  repository.UserRepository
 }
 
-func NewAuthMiddleware(tokens *auth.TokenManager) *AuthMiddleware {
-	return &AuthMiddleware{tokens: tokens}
+func NewAuthMiddleware(tokens *auth.TokenManager, users repository.UserRepository) *AuthMiddleware {
+	return &AuthMiddleware{tokens: tokens, users: users}
 }
 
 func (m *AuthMiddleware) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc {
@@ -53,10 +57,50 @@ func (m *AuthMiddleware) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc {
 			})
 		}
 
+		user, err := m.users.FindByID(c.Request().Context(), claims.UserID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{
+					Success: false,
+					Error: dto.APIError{
+						Code:    dto.ErrorCodeUnauthorized,
+						Message: "user not found",
+					},
+				})
+			}
+			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{
+				Success: false,
+				Error: dto.APIError{
+					Code:    dto.ErrorCodeInternal,
+					Message: "failed to load current user",
+				},
+			})
+		}
+		if !user.IsActive {
+			return c.JSON(http.StatusForbidden, dto.ErrorResponse{
+				Success: false,
+				Error: dto.APIError{
+					Code:    dto.ErrorCodeInactiveUser,
+					Message: "user account is inactive",
+				},
+			})
+		}
+
+		roles, err := m.users.ListRolesByUserID(c.Request().Context(), user.ID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{
+				Success: false,
+				Error: dto.APIError{
+					Code:    dto.ErrorCodeInternal,
+					Message: "failed to load current user roles",
+				},
+			})
+		}
+
 		auth.SetCurrentUser(c, auth.CurrentUser{
-			UserID: claims.UserID,
-			Email:  claims.Email,
-			Roles:  claims.Roles,
+			UserID: user.ID,
+			Email:  user.Email,
+			Roles:  roles,
 		})
 
 		return next(c)

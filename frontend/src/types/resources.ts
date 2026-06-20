@@ -53,3 +53,8 @@ export interface ResourceAvailabilityPayload {
   start_at: string;
   end_at: string;
 }
+
+export interface ResourceBusyInterval {
+  start_at: string;
+  end_at: string;
+}

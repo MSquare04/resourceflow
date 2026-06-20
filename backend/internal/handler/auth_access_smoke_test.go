@@ -116,7 +116,7 @@ func TestAuthAccessSmoke(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", time.Hour)
 	authService := service.NewAuthService(repo, hasher, tokenManager)
 	authHandler := handler.NewAuthHandler(authService)
-	authMiddleware := middleware.NewAuthMiddleware(tokenManager)
+	authMiddleware := middleware.NewAuthMiddleware(tokenManager, repo)
 
 	e := echo.New()
 	e.POST("/auth/login", authHandler.Login)
@@ -180,6 +180,35 @@ func TestAuthAccessSmoke(t *testing.T) {
 
 	t.Run("admin endpoint without role", func(t *testing.T) {
 		token, _, err := tokenManager.GenerateAccessToken(2, "employee@example.com", []string{"employee"})
+		if err != nil {
+			t.Fatalf("failed to generate token: %v", err)
+		}
+		rec := performJSONRequest(t, e, http.MethodGet, "/admin-only", nil, token)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("expected 403, got %d body=%s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("inactive user token is rejected", func(t *testing.T) {
+		repo.usersByID[2] = model.User{
+			ID:           2,
+			FullName:     "Employee User",
+			Email:        "employee@example.com",
+			PasswordHash: employeeHash,
+			IsActive:     false,
+		}
+		token, _, err := tokenManager.GenerateAccessToken(2, "employee@example.com", []string{"employee"})
+		if err != nil {
+			t.Fatalf("failed to generate token: %v", err)
+		}
+		rec := performJSONRequest(t, e, http.MethodGet, "/auth/me", nil, token)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("expected 403, got %d body=%s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("stale admin claim does not bypass current roles", func(t *testing.T) {
+		token, _, err := tokenManager.GenerateAccessToken(2, "employee@example.com", []string{"admin"})
 		if err != nil {
 			t.Fatalf("failed to generate token: %v", err)
 		}

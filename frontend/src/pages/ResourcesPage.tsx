@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
+import { listBookingRules } from "../api/bookingRules";
 import { ApiError } from "../api/client";
 import { listDepartments } from "../api/departments";
 import {
@@ -17,6 +18,7 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
 import { PageHeader } from "../components/PageHeader";
+import type { BookingRule } from "../types/bookingRules";
 import type { Resource, ResourceCategory, ResourcePayload, ResourceType } from "../types/resources";
 import type { Department } from "../types/users";
 
@@ -82,6 +84,7 @@ export function ResourcesPage(): JSX.Element {
   const [categories, setCategories] = useState<ResourceCategory[]>([]);
   const [types, setTypes] = useState<ResourceType[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [bookingRules, setBookingRules] = useState<BookingRule[] | null>(null);
   const [filters, setFilters] = useState<ResourceFilters>(defaultFilters);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -120,6 +123,7 @@ export function ResourcesPage(): JSX.Element {
     categories: ResourceCategory[];
     types: ResourceType[];
     departments: Department[];
+    bookingRules: BookingRule[] | null;
   } | null> {
     setLoading(true);
     setError(null);
@@ -131,6 +135,7 @@ export function ResourcesPage(): JSX.Element {
         listResourceTypes(),
       ]);
       let departmentsData: Department[] = [];
+      let bookingRulesData: BookingRule[] | null = null;
 
       if (isAdmin) {
         try {
@@ -138,18 +143,26 @@ export function ResourcesPage(): JSX.Element {
         } catch {
           departmentsData = [];
         }
+
+        try {
+          bookingRulesData = await listBookingRules();
+        } catch {
+          bookingRulesData = null;
+        }
       }
 
       setResources(resourcesData);
       setCategories(categoriesData);
       setTypes(typesData);
       setDepartments(departmentsData);
+      setBookingRules(bookingRulesData);
 
       return {
         resources: resourcesData,
         categories: categoriesData,
         types: typesData,
         departments: departmentsData,
+        bookingRules: bookingRulesData,
       };
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : t("errors.generic"));
@@ -175,6 +188,13 @@ export function ResourcesPage(): JSX.Element {
     () => new Map(departments.map((department) => [department.id, department])),
     [departments],
   );
+  const activeBookingRuleTypeIds = useMemo(() => {
+    if (bookingRules === null) {
+      return null;
+    }
+
+    return new Set(bookingRules.filter((rule) => rule.is_active).map((rule) => rule.resource_type_id));
+  }, [bookingRules]);
 
   const typeOptions = useMemo(() => {
     if (filters.categoryId === "all") {
@@ -709,6 +729,13 @@ export function ResourcesPage(): JSX.Element {
                         <dd>{getDepartmentName(resource)}</dd>
                       </div>
                     </dl>
+
+                    {isAdmin && activeBookingRuleTypeIds !== null && !activeBookingRuleTypeIds.has(resource.type_id) ? (
+                      <div className="resource-card__warning">
+                        <span>{t("pages.resources.warnings.missingRule")}</span>
+                        <Link to="/booking-rules">{t("pages.resources.warnings.openRules")}</Link>
+                      </div>
+                    ) : null}
 
                     <div className="resource-card__actions">
                       <Link to={`/resources/${resource.id}`} className="btn btn-secondary">

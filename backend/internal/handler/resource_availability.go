@@ -34,6 +34,8 @@ func (h *ResourceAvailabilityHandler) Create(c *echo.Context) error {
 		switch {
 		case errors.Is(err, service.ErrValidation):
 			return validationError(c, "invalid availability payload")
+		case errors.Is(err, service.ErrAvailabilityConflict):
+			return conflictError(c, "availability change conflicts with existing active bookings")
 		case errors.Is(err, service.ErrResourceNotFound):
 			return notFoundError(c, "resource not found")
 		default:
@@ -128,6 +130,8 @@ func (h *ResourceAvailabilityHandler) Update(c *echo.Context) error {
 		switch {
 		case errors.Is(err, service.ErrValidation):
 			return validationError(c, "invalid availability payload")
+		case errors.Is(err, service.ErrAvailabilityConflict):
+			return conflictError(c, "availability change conflicts with existing active bookings")
 		case errors.Is(err, service.ErrResourceNotFound):
 			return notFoundError(c, "resource not found")
 		case errors.Is(err, service.ErrResourceAvailabilityNotFound):
@@ -165,6 +169,8 @@ func (h *ResourceAvailabilityHandler) Delete(c *echo.Context) error {
 		switch {
 		case errors.Is(err, service.ErrValidation):
 			return validationError(c, "invalid ids")
+		case errors.Is(err, service.ErrAvailabilityConflict):
+			return conflictError(c, "availability change conflicts with existing active bookings")
 		case errors.Is(err, service.ErrResourceNotFound):
 			return notFoundError(c, "resource not found")
 		case errors.Is(err, service.ErrResourceAvailabilityNotFound):
