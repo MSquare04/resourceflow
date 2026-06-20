@@ -8,6 +8,7 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
 import { PageHeader } from "../components/PageHeader";
+import { ToggleSwitch } from "../components/ToggleSwitch";
 import type { BookingRule, BookingRulePayload } from "../types/bookingRules";
 import type { ResourceType } from "../types/resources";
 import { formatUtcDateTime } from "../utils/datetime";
@@ -352,23 +353,22 @@ export function BookingRulesPage(): JSX.Element {
               />
             </label>
 
-            <label className="field field-checkbox">
-              <span>{t("pages.bookingRules.form.fields.requiresApproval")}</span>
-              <input
-                type="checkbox"
+            <div className="toggle-switch-field">
+              <ToggleSwitch
                 checked={formState.requiresApproval}
-                onChange={(event) => setFormState((current) => ({ ...current, requiresApproval: event.target.checked }))}
+                label={t("pages.bookingRules.form.fields.requiresApproval")}
+                onChange={(checked) => setFormState((current) => ({ ...current, requiresApproval: checked }))}
               />
-            </label>
+            </div>
 
-            <label className="field field-checkbox">
-              <span>{t("pages.bookingRules.form.fields.isActive")}</span>
-              <input
-                type="checkbox"
+            <div className="toggle-switch-field">
+              <ToggleSwitch
                 checked={formState.isActive}
-                onChange={(event) => setFormState((current) => ({ ...current, isActive: event.target.checked }))}
+                label={t("pages.bookingRules.form.fields.isActive")}
+                onChange={(checked) => setFormState((current) => ({ ...current, isActive: checked }))}
               />
-            </label>
+              <p className="muted toggle-switch-field__hint">{t("pages.bookingRules.form.fields.isActiveHint")}</p>
+            </div>
           </div>
 
           {formError ? <p className="error-text">{formError}</p> : null}
@@ -456,7 +456,7 @@ export function BookingRulesPage(): JSX.Element {
                     </div>
                     <div className="resource-card__badges">
                       <span className={`badge ${rule.is_active ? "badge-success" : "badge-muted"}`}>
-                        {rule.is_active ? t("pages.bookingRules.status.active") : t("pages.bookingRules.status.inactive")}
+                        {rule.is_active ? t("pages.bookingRules.status.enabled") : t("pages.bookingRules.status.disabled")}
                       </span>
                       <span className={`badge ${rule.requires_approval ? "badge-warning" : "badge-info"}`}>
                         {rule.requires_approval

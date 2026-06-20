@@ -70,7 +70,7 @@ export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
       const data = await getCurrentUser();
       setUser(data.user);
     } catch (error) {
-      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      if (error instanceof ApiError && (error.status === 401 || error.code === "inactive_user")) {
         clearSession();
       } else {
         setUser(null);

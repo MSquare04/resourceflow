@@ -22,6 +22,8 @@ var (
 	ErrBookingHorizonExceeded     = errors.New("booking horizon exceeded")
 	ErrBookingForbidden           = errors.New("booking action is forbidden")
 	ErrBookingInvalidStatusAction = errors.New("invalid booking status transition")
+	ErrBookingStartNotFuture      = errors.New("booking start time must be in the future")
+	ErrBookingResourceUnavailable = errors.New("resource is inactive or not bookable")
 )
 
 var activeBookingStatuses = []string{
@@ -69,12 +71,25 @@ func (s *BookingService) Create(ctx context.Context, userID int64, req dto.Creat
 		)
 		return dto.BookingResponse{}, err
 	}
+	if !startAt.After(time.Now().UTC()) {
+		logBookingRejection(ctx, "booking create rejected: start time is not in the future",
+			"actor_user_id", userID,
+			"resource_id", req.ResourceID,
+			"start_at", startAt,
+			"end_at", endAt,
+		)
+		return dto.BookingResponse{}, ErrBookingStartNotFuture
+	}
 
-	if _, err := s.users.FindByID(ctx, userID); err != nil {
+	user, err := s.users.FindByID(ctx, userID)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return dto.BookingResponse{}, ErrValidation
 		}
 		return dto.BookingResponse{}, err
+	}
+	if !user.IsActive {
+		return dto.BookingResponse{}, ErrValidation
 	}
 
 	resource, err := s.resources.FindByID(ctx, req.ResourceID)
@@ -91,7 +106,7 @@ func (s *BookingService) Create(ctx context.Context, userID int64, req dto.Creat
 			"start_at", startAt,
 			"end_at", endAt,
 		)
-		return dto.BookingResponse{}, ErrValidation
+		return dto.BookingResponse{}, ErrBookingResourceUnavailable
 	}
 
 	covered, err := s.bookings.IsCoveredByAvailability(ctx, req.ResourceID, startAt, endAt)
@@ -247,6 +262,36 @@ func (s *BookingService) ListByUserID(ctx context.Context, userID int64) ([]dto.
 	}
 
 	return responses, nil
+}
+
+func (s *BookingService) ListBusyIntervalsByResourceID(ctx context.Context, resourceID int64) ([]dto.ResourceBusyIntervalResponse, error) {
+	if resourceID <= 0 {
+		return nil, ErrValidation
+	}
+
+	if _, err := s.resources.FindByID(ctx, resourceID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrResourceNotFound
+		}
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	until := now.AddDate(0, 0, 30)
+	bookings, err := s.bookings.ListBusyIntervalsByResourceID(ctx, resourceID, activeBookingStatuses, now, until)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]dto.ResourceBusyIntervalResponse, 0, len(bookings))
+	for _, booking := range bookings {
+		result = append(result, dto.ResourceBusyIntervalResponse{
+			StartAt: booking.StartAt.UTC(),
+			EndAt:   booking.EndAt.UTC(),
+		})
+	}
+
+	return result, nil
 }
 
 func (s *BookingService) GetByID(ctx context.Context, id int64, includeUserFullName bool) (dto.BookingResponse, error) {

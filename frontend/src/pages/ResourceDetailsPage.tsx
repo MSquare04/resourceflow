@@ -10,6 +10,7 @@ import {
   deleteResourceAvailability,
   getResource,
   listResourceAvailability,
+  listResourceBusyIntervals,
   listResourceCategories,
   listResourceTypes,
   updateResourceAvailability,
@@ -20,16 +21,27 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
 import { PageHeader } from "../components/PageHeader";
-import type { Resource, ResourceAvailability, ResourceCategory, ResourceType } from "../types/resources";
+import type { Resource, ResourceAvailability, ResourceBusyInterval, ResourceCategory, ResourceType } from "../types/resources";
 import type { Department } from "../types/users";
 import { formatUtcDateTime } from "../utils/datetime";
 
 type AvailabilityFormMode = "create" | "edit";
 
-function mapBookingError(message: string, t: ReturnType<typeof useTranslation>["t"]): string {
+function mapBookingError(error: ApiError, t: ReturnType<typeof useTranslation>["t"]): string {
+  if (error.code === "conflict" || error.status === 409) {
+    if (error.message === "resource is inactive or not bookable") {
+      return t("pages.resourceDetails.booking.errors.resourceUnavailable");
+    }
+
+    return t("pages.resourceDetails.booking.errors.conflict");
+  }
+
+  const message = error.message;
   switch (message) {
     case "invalid booking payload":
       return t("pages.resourceDetails.booking.errors.invalidPayload");
+    case "booking start time must be in the future":
+      return t("pages.resourceDetails.booking.errors.startInPast");
     case "resource not found":
       return t("pages.resourceDetails.booking.errors.resourceNotFound");
     case "booking interval is outside resource availability":
@@ -47,7 +59,12 @@ function mapBookingError(message: string, t: ReturnType<typeof useTranslation>["
   }
 }
 
-function mapAvailabilityError(message: string, t: ReturnType<typeof useTranslation>["t"]): string {
+function mapAvailabilityError(error: ApiError, t: ReturnType<typeof useTranslation>["t"]): string {
+  if (error.code === "conflict" || error.status === 409) {
+    return t("pages.resourceDetails.availability.errors.activeBookingConflict");
+  }
+
+  const message = error.message;
   switch (message) {
     case "invalid availability payload":
       return t("pages.resourceDetails.availability.errors.invalidPayload");
@@ -87,6 +104,7 @@ export function ResourceDetailsPage(): JSX.Element {
   const [types, setTypes] = useState<ResourceType[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [availability, setAvailability] = useState<ResourceAvailability[]>([]);
+  const [busyIntervals, setBusyIntervals] = useState<ResourceBusyInterval[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [startAt, setStartAt] = useState("");
@@ -120,11 +138,12 @@ export function ResourceDetailsPage(): JSX.Element {
     setError(null);
 
     try {
-      const [resourceData, categoriesData, typesData, availabilityData] = await Promise.all([
+      const [resourceData, categoriesData, typesData, availabilityData, busyIntervalsData] = await Promise.all([
         getResource(resourceId),
         listResourceCategories(),
         listResourceTypes(),
         listResourceAvailability(resourceId),
+        listResourceBusyIntervals(resourceId),
       ]);
       let departmentsData: Department[] = [];
 
@@ -141,6 +160,7 @@ export function ResourceDetailsPage(): JSX.Element {
       setTypes(typesData);
       setDepartments(departmentsData);
       setAvailability(availabilityData);
+      setBusyIntervals(busyIntervalsData);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : t("errors.generic"));
     } finally {
@@ -178,6 +198,20 @@ export function ResourceDetailsPage(): JSX.Element {
       return !Number.isNaN(endTime) && endTime > now;
     });
   }, [uniqueAvailability]);
+  const visibleBusyIntervals = useMemo(() => {
+    const uniqueIntervals = new Map<string, ResourceBusyInterval>();
+
+    for (const interval of busyIntervals) {
+      const key = `${interval.start_at}__${interval.end_at}`;
+      if (!uniqueIntervals.has(key)) {
+        uniqueIntervals.set(key, interval);
+      }
+    }
+
+    return [...uniqueIntervals.values()].sort(
+      (left, right) => new Date(left.start_at).getTime() - new Date(right.start_at).getTime(),
+    );
+  }, [busyIntervals]);
 
   const endAtMin = useMemo(() => {
     if (!startAt) {
@@ -216,6 +250,17 @@ export function ResourceDetailsPage(): JSX.Element {
 
     if (!isInsideAvailability) {
       return t("pages.resourceDetails.booking.errors.outsideAvailability");
+    }
+
+    const intersectsBusyInterval = visibleBusyIntervals.some((interval) => {
+      const intervalStart = new Date(interval.start_at).getTime();
+      const intervalEnd = new Date(interval.end_at).getTime();
+
+      return startValue.getTime() < intervalEnd && endValue.getTime() > intervalStart;
+    });
+
+    if (intersectsBusyInterval) {
+      return t("pages.resourceDetails.booking.errors.busyConflict");
     }
 
     return null;
@@ -308,7 +353,7 @@ export function ResourceDetailsPage(): JSX.Element {
       closeAvailabilityForm();
     } catch (submitError) {
       if (submitError instanceof ApiError) {
-        setAvailabilityFormError(mapAvailabilityError(submitError.message, t));
+        setAvailabilityFormError(mapAvailabilityError(submitError, t));
       } else if (submitError instanceof Error) {
         setAvailabilityFormError(submitError.message);
       } else {
@@ -336,7 +381,7 @@ export function ResourceDetailsPage(): JSX.Element {
       }
     } catch (deleteError) {
       if (deleteError instanceof ApiError) {
-        setAvailabilityActionError(mapAvailabilityError(deleteError.message, t));
+        setAvailabilityActionError(mapAvailabilityError(deleteError, t));
       } else if (deleteError instanceof Error) {
         setAvailabilityActionError(deleteError.message);
       } else {
@@ -376,7 +421,7 @@ export function ResourceDetailsPage(): JSX.Element {
       navigate("/my-bookings", { replace: true });
     } catch (submitError) {
       if (submitError instanceof ApiError) {
-        setFormError(mapBookingError(submitError.message, t));
+        setFormError(mapBookingError(submitError, t));
       } else if (submitError instanceof Error) {
         setFormError(submitError.message);
       } else {
@@ -593,6 +638,34 @@ export function ResourceDetailsPage(): JSX.Element {
                         </div>
                       </>
                     ) : null}
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="resource-details-card">
+            <div className="resource-details-card__header">
+              <div className="resource-details-card__heading">
+                <h3 className="resource-details-card__title">{t("pages.resourceDetails.busy.title")}</h3>
+              </div>
+            </div>
+            <p className="muted resource-details-hint">{t("pages.resourceDetails.busy.hint")}</p>
+
+            {visibleBusyIntervals.length === 0 ? (
+              <EmptyState title={t("pages.resourceDetails.busy.empty.title")} />
+            ) : (
+              <div className="busy-intervals-list" role="list">
+                {visibleBusyIntervals.map((interval) => (
+                  <article key={`${interval.start_at}-${interval.end_at}`} className="busy-interval-card" role="listitem">
+                    <div>
+                      <strong>{t("pages.resourceDetails.busy.from")}</strong>
+                      <div>{formatUtcDateTime(interval.start_at)}</div>
+                    </div>
+                    <div>
+                      <strong>{t("pages.resourceDetails.busy.to")}</strong>
+                      <div>{formatUtcDateTime(interval.end_at)}</div>
+                    </div>
                   </article>
                 ))}
               </div>

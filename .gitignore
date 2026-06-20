@@ -15,6 +15,7 @@ dist/
 coverage.out
 backend/.gocache/
 backend/.gomodcache/
+.gocache/
 
 # Env
 .env

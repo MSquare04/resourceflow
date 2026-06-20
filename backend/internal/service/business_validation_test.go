@@ -34,7 +34,7 @@ func TestResourceService_Create_InvalidTypeCategoryRelation(t *testing.T) {
 func TestResourceAvailabilityService_Create_InvalidInterval(t *testing.T) {
 	t.Parallel()
 
-	svc := service.NewResourceAvailabilityService(&availabilityRepoMock{}, &resourceRepoMock{})
+	svc := service.NewResourceAvailabilityService(&availabilityRepoMock{}, &resourceRepoMock{}, &bookingRepoMock{})
 
 	now := time.Now().UTC().Truncate(time.Second)
 	_, err := svc.Create(context.Background(), 1, dto.CreateResourceAvailabilityRequest{

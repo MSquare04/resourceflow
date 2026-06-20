@@ -129,6 +129,10 @@ export const en = {
         title: "No resources yet",
         description: "The catalog will appear here when the backend returns resources.",
       },
+      warnings: {
+        missingRule: "No enabled booking rule is configured for this resource type.",
+        openRules: "Open booking rules",
+      },
       noResults: {
         title: "No matching resources",
         description: "Try changing the search query or resetting the filters.",
@@ -219,10 +223,20 @@ export const en = {
           invalidPayload: "Check the availability interval data",
           resourceNotFound: "Resource not found",
           availabilityNotFound: "Availability interval not found",
+          activeBookingConflict: "This change would break existing active bookings",
           requiredDates: "Enter both start and end date and time",
           invalidDates: "Enter valid date and time values",
           invalidRange: "Start date must be earlier than end date",
           duplicate: "An identical availability interval already exists",
+        },
+      },
+      busy: {
+        title: "Busy time",
+        hint: "These intervals are already occupied by pending or confirmed bookings in the next 30 days.",
+        from: "From",
+        to: "To",
+        empty: {
+          title: "No busy intervals for the nearest period",
         },
       },
       booking: {
@@ -245,7 +259,9 @@ export const en = {
           invalidRange: "Start date must be earlier than end date",
           invalidPayload: "Check the booking form data",
           resourceNotFound: "Resource not found",
+          resourceUnavailable: "This resource is inactive or booking is disabled",
           outsideAvailability: "The selected interval is outside the resource availability",
+          busyConflict: "The selected interval overlaps an existing booking",
           ruleNotConfigured: "No active booking rule is configured for this resource type",
           limitExceeded: "The active bookings limit has been exceeded",
           horizonExceeded: "The selected interval exceeds the booking horizon",
@@ -417,8 +433,8 @@ export const en = {
       resultsSummary: "Rules found: {{count}}",
       unknownResourceType: "Unknown resource type",
       status: {
-        active: "Active",
-        inactive: "Inactive",
+        enabled: "Rule enabled",
+        disabled: "Disabled",
         approvalRequired: "Approval required",
         approvalNotRequired: "No approval",
       },
@@ -474,7 +490,8 @@ export const en = {
           maxActiveBookingsPerUser: "Maximum active bookings per user",
           bookingHorizonDays: "Booking horizon, days",
           requiresApproval: "Require approval",
-          isActive: "Active rule",
+          isActive: "Rule enabled",
+          isActiveHint: "An enabled rule applies to new bookings. A disabled rule is kept but no longer used.",
         },
         errors: {
           generic: "Unable to save the booking rule",

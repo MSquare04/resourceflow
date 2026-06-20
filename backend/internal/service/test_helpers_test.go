@@ -16,6 +16,7 @@ type bookingRepoMock struct {
 	createFn           func(ctx context.Context, params repository.CreateBookingParams) (model.Booking, error)
 	listFn             func(ctx context.Context) ([]model.Booking, error)
 	listByUserIDFn     func(ctx context.Context, userID int64) ([]model.Booking, error)
+	listBusyFn         func(ctx context.Context, resourceID int64, statuses []string, from, until time.Time) ([]model.Booking, error)
 	findByIDFn         func(ctx context.Context, id int64) (model.Booking, error)
 	countByStatusesFn  func(ctx context.Context, userID int64, statuses []string) (int64, error)
 	hasConflictFn      func(ctx context.Context, resourceID int64, startAt, endAt time.Time, statuses []string) (bool, error)
@@ -41,6 +42,18 @@ func (m *bookingRepoMock) List(ctx context.Context) ([]model.Booking, error) {
 func (m *bookingRepoMock) ListByUserID(ctx context.Context, userID int64) ([]model.Booking, error) {
 	if m.listByUserIDFn != nil {
 		return m.listByUserIDFn(ctx, userID)
+	}
+	return nil, errUnexpectedCall
+}
+
+func (m *bookingRepoMock) ListBusyIntervalsByResourceID(
+	ctx context.Context,
+	resourceID int64,
+	statuses []string,
+	from, until time.Time,
+) ([]model.Booking, error) {
+	if m.listBusyFn != nil {
+		return m.listBusyFn(ctx, resourceID, statuses, from, until)
 	}
 	return nil, errUnexpectedCall
 }

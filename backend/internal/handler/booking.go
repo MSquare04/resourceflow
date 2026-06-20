@@ -34,8 +34,12 @@ func (h *BookingHandler) Create(c *echo.Context) error {
 	booking, err := h.bookings.Create(ctx, currentUser.UserID, req)
 	if err != nil {
 		switch {
+		case errors.Is(err, service.ErrBookingStartNotFuture):
+			return validationError(c, "booking start time must be in the future")
 		case errors.Is(err, service.ErrValidation):
 			return validationError(c, "invalid booking payload")
+		case errors.Is(err, service.ErrBookingResourceUnavailable):
+			return conflictError(c, "resource is inactive or not bookable")
 		case errors.Is(err, service.ErrResourceNotFound):
 			return notFoundError(c, "resource not found")
 		case errors.Is(err, service.ErrBookingOutOfAvailability):

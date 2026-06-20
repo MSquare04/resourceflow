@@ -14,6 +14,7 @@ type BookingRepository interface {
 	Create(ctx context.Context, params CreateBookingParams) (model.Booking, error)
 	List(ctx context.Context) ([]model.Booking, error)
 	ListByUserID(ctx context.Context, userID int64) ([]model.Booking, error)
+	ListBusyIntervalsByResourceID(ctx context.Context, resourceID int64, statuses []string, from, until time.Time) ([]model.Booking, error)
 	FindByID(ctx context.Context, id int64) (model.Booking, error)
 	CountByUserAndStatuses(ctx context.Context, userID int64, statuses []string) (int64, error)
 	HasConflict(ctx context.Context, resourceID int64, startAt, endAt time.Time, statuses []string) (bool, error)
@@ -165,6 +166,57 @@ ORDER BY id DESC;
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("list bookings by user rows failed: %w", err)
+	}
+
+	return bookings, nil
+}
+
+func (r *PostgresBookingRepository) ListBusyIntervalsByResourceID(
+	ctx context.Context,
+	resourceID int64,
+	statuses []string,
+	from, until time.Time,
+) ([]model.Booking, error) {
+	query := `
+SELECT
+  id,
+  resource_id,
+  user_id,
+  start_at,
+  end_at,
+  purpose,
+  status,
+  approved_by_user_id,
+  approved_at,
+  cancelled_at,
+  completed_at,
+  created_at,
+  updated_at
+FROM app.bookings
+WHERE resource_id = $1
+  AND status = ANY($2)
+  AND end_at > $3
+  AND start_at < $4
+ORDER BY start_at ASC, end_at ASC;
+`
+
+	rows, err := r.db.QueryContext(ctx, query, resourceID, pq.Array(statuses), from, until)
+	if err != nil {
+		return nil, fmt.Errorf("list busy intervals by resource query failed: %w", err)
+	}
+	defer rows.Close()
+
+	bookings := make([]model.Booking, 0)
+	for rows.Next() {
+		booking, err := scanBooking(rows)
+		if err != nil {
+			return nil, fmt.Errorf("list busy intervals by resource scan failed: %w", err)
+		}
+		bookings = append(bookings, booking)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list busy intervals by resource rows failed: %w", err)
 	}
 
 	return bookings, nil
