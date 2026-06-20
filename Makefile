@@ -15,7 +15,7 @@ POSTGRES_SSLMODE ?= disable
 
 DATABASE_URL := postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=$(POSTGRES_SSLMODE)
 
-.PHONY: help run dev-up test tidy build fmt vet check clean migrate-up migrate-down migrate-version
+.PHONY: help run dev-up test tidy build fmt vet check clean migrate-up migrate-down migrate-version demo-reset
 
 help:
 	@echo "Available commands:"
@@ -30,6 +30,7 @@ help:
 	@echo "  make migrate-up      - apply all migrations"
 	@echo "  make migrate-down    - rollback one migration"
 	@echo "  make migrate-version - show current migration version"
+	@echo "  make demo-reset      - reset local application data and seed demo data"
 	@echo "  make clean  - remove build artifacts"
 
 run:
@@ -66,3 +67,6 @@ migrate-down:
 
 migrate-version:
 	cd $(BACKEND_DIR) && go run -tags "postgres" $(MIGRATE_TOOL) -path $(MIGRATIONS_DIR) -database "$(DATABASE_URL)" version
+
+demo-reset:
+	cd $(BACKEND_DIR) && go run ./cmd/demo-seed

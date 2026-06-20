@@ -1,0 +1,1125 @@
+{
+  "info": {
+    "_postman_id": "8280b459-fb02-45f5-9370-995a8273adcf",
+    "name": "ResourceFlow — Demo Scenario (read-only)",
+    "description": "Безопасный read-only прогон по демонстрационным данным, созданным `make demo-reset`. Коллекция не создаёт и не изменяет данные. Заполните только demoPassword и запускайте сверху вниз.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 — Health",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": "{{healthUrl}}"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 — Admin demo",
+      "item": [
+        {
+          "name": "Login — Анна Смирнова (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"access token exists\", () => pm.expect(json.data.access_token).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"role admin\", () => pm.expect(json.data.user.roles).to.include(\"admin\"));",
+                  "pm.environment.set(\"adminToken\", json.data.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me — admin",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/auth/me"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"admin role\", () => pm.expect(json.data.roles).to.include(\"admin\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resources — admin",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/resources"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"7 demo resources\", () => pm.expect(json.data.length).to.eql(7));",
+                  "const selected = json.data.find(x => x.name === \"Переговорная «Нева»\") || json.data.find(x => x.is_active && x.is_bookable) || json.data[0];",
+                  "pm.test(\"demo resource found\", () => pm.expect(selected).to.be.an(\"object\"));",
+                  "pm.environment.set(\"demoResourceId\", selected.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resource details — Нева",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/resources/{{demoResourceId}}"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Availability — Нева",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/resources/{{demoResourceId}}/availability"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"availability is array\", () => pm.expect(json.data).to.be.an(\"array\"));",
+                  "pm.test(\"availability exists\", () => pm.expect(json.data.length).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Busy intervals — privacy",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/resources/{{demoResourceId}}/busy-intervals"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"busy intervals are array\", () => pm.expect(json.data).to.be.an(\"array\"));",
+                  "pm.test(\"only start_at/end_at exposed\", () => json.data.forEach(x => pm.expect(Object.keys(x).sort()).to.eql([\"end_at\",\"start_at\"])));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Users — admin",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/users"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"6 demo users\", () => pm.expect(json.data.length).to.eql(6));",
+                  "pm.test(\"inactive demo user exists\", () => pm.expect(json.data.some(x => x.email === \"igor.sokolov@resourceflow.example\" && x.is_active === false)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Booking rules — admin",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/booking-rules"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"5 demo rules\", () => pm.expect(json.data.length).to.eql(5));",
+                  "pm.test(\"one disabled rule exists\", () => pm.expect(json.data.some(x => x.is_active === false)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bookings — admin",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/bookings"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"demo bookings exist\", () => pm.expect(json.data.length).to.be.at.least(9));",
+                  "const statuses = new Set(json.data.map(x => x.status));",
+                  "[\"pending\",\"confirmed\",\"completed\",\"rejected\",\"cancelled\"].forEach(s => pm.test(`status ${s} exists`, () => pm.expect(statuses.has(s)).to.eql(true)));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 — Manager demo",
+      "item": [
+        {
+          "name": "Login — Михаил Волков (manager)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{managerEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"access token exists\", () => pm.expect(json.data.access_token).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"role manager\", () => pm.expect(json.data.user.roles).to.include(\"manager\"));",
+                  "pm.environment.set(\"managerToken\", json.data.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me — manager",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{managerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/auth/me"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"manager role\", () => pm.expect(json.data.roles).to.include(\"manager\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resources — manager",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{managerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/resources"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"resources visible\", () => pm.expect(json.data.length).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bookings — manager",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{managerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/bookings"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"bookings visible\", () => pm.expect(json.data).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My bookings — manager",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{managerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/my/bookings"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"my bookings is array\", () => pm.expect(json.data).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 — Employee demo",
+      "item": [
+        {
+          "name": "Login — Елена Кузнецова (employee)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{employeeEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"access token exists\", () => pm.expect(json.data.access_token).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"role employee\", () => pm.expect(json.data.user.roles).to.include(\"employee\"));",
+                  "pm.environment.set(\"employeeToken\", json.data.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me — employee",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employeeToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/auth/me"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"employee role\", () => pm.expect(json.data.roles).to.include(\"employee\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resources — employee",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employeeToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/resources"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"resources visible\", () => pm.expect(json.data.length).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resource details — employee",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employeeToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/resources/{{demoResourceId}}"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Busy intervals — employee",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employeeToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/resources/{{demoResourceId}}/busy-intervals"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"busy intervals are array\", () => pm.expect(json.data).to.be.an(\"array\"));",
+                  "pm.test(\"privacy fields only\", () => json.data.forEach(x => pm.expect(Object.keys(x).sort()).to.eql([\"end_at\",\"start_at\"])));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My bookings — employee",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{employeeToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/my/bookings"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"seeded bookings visible\", () => pm.expect(json.data.length).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 — HR demo",
+      "item": [
+        {
+          "name": "Login — Ольга Петрова (hr)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{hrEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"access token exists\", () => pm.expect(json.data.access_token).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"role hr\", () => pm.expect(json.data.user.roles).to.include(\"hr\"));",
+                  "pm.environment.set(\"hrToken\", json.data.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me — HR",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{hrToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/auth/me"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"hr role\", () => pm.expect(json.data.roles).to.include(\"hr\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resources — HR",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{hrToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/resources"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"resources visible\", () => pm.expect(json.data.length).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 — Interviewer demo",
+      "item": [
+        {
+          "name": "Login — Алексей Орлов (interviewer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{interviewerEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"access token exists\", () => pm.expect(json.data.access_token).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"role interviewer\", () => pm.expect(json.data.user.roles).to.include(\"interviewer\"));",
+                  "pm.environment.set(\"interviewerToken\", json.data.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me — interviewer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{interviewerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/auth/me"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"interviewer role\", () => pm.expect(json.data.roles).to.include(\"interviewer\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resources — interviewer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{interviewerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/resources"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"success = true\", () => pm.expect(json.success).to.eql(true));",
+                  "pm.test(\"data exists\", () => pm.expect(json).to.have.property(\"data\"));",
+                  "pm.test(\"resources visible\", () => pm.expect(json.data.length).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
