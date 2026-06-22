@@ -69,4 +69,4 @@ migrate-version:
 	cd $(BACKEND_DIR) && go run -tags "postgres" $(MIGRATE_TOOL) -path $(MIGRATIONS_DIR) -database "$(DATABASE_URL)" version
 
 demo-reset:
-	cd $(BACKEND_DIR) && go run ./cmd/demo-seed
+	@set -a; . ./.env.demo.local; set +a; cd backend && go run ./cmd/demo-seed

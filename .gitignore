@@ -20,6 +20,7 @@ backend/.gomodcache/
 # Env
 .env
 .env.local
+.env.demo.local
 
 # Logs
 *.log
