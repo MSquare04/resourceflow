@@ -35,7 +35,7 @@ func (h *BookingHandler) Create(c *echo.Context) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrBookingStartNotFuture):
-			return validationError(c, "booking start time must be in the future")
+			return validationError(c, "booking start time cannot be earlier than the current minute")
 		case errors.Is(err, service.ErrValidation):
 			return validationError(c, "invalid booking payload")
 		case errors.Is(err, service.ErrBookingResourceUnavailable):

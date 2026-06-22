@@ -189,6 +189,10 @@ export const en = {
       rule: {
         title: "Active booking rule",
         missing: "No active booking rule is configured for this resource type. Booking creation is unavailable.",
+        actions: {
+          edit: "Edit",
+          configure: "Configure rule",
+        },
         fields: {
           minDuration: "Minimum duration",
           maxDuration: "Maximum duration",
@@ -278,7 +282,7 @@ export const en = {
           generic: "Unable to create booking",
           requiredDates: "Enter both start and end date and time",
           invalidDates: "Enter valid date and time values",
-          startInPast: "Start date must be strictly later than the current time",
+          startInPast: "The start time cannot be earlier than the current minute.",
           invalidRange: "Start date must be earlier than end date",
           invalidPayload: "Check the booking form data",
           resourceNotFound: "Resource not found",

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { createBookingRule, listBookingRules, updateBookingRule } from "../api/bookingRules";
 import { ApiError } from "../api/client";
@@ -70,6 +71,9 @@ function mapRuleError(message: string, t: ReturnType<typeof useTranslation>["t"]
 
 export function BookingRulesPage(): JSX.Element {
   const { t } = useTranslation();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [rules, setRules] = useState<BookingRule[]>([]);
   const [resourceTypes, setResourceTypes] = useState<ResourceType[]>([]);
   const [filters, setFilters] = useState<RuleFilters>(defaultFilters);
@@ -81,10 +85,31 @@ export function BookingRulesPage(): JSX.Element {
   const [formState, setFormState] = useState<RuleFormState>(defaultFormState);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const formPanelRef = useRef<HTMLDivElement | null>(null);
+  const firstInputRef = useRef<HTMLSelectElement | null>(null);
+  const handledEditParamRef = useRef<string | null>(null);
+  const handledCreateStateRef = useRef(false);
 
   useEffect(() => {
     void loadBookingRulesPage();
   }, []);
+
+  useEffect(() => {
+    if (!isFormOpen) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      formPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.setTimeout(() => {
+        firstInputRef.current?.focus({ preventScroll: true });
+      }, 150);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [editingRuleId, formMode, isFormOpen]);
 
   async function loadBookingRulesPage(): Promise<void> {
     setLoading(true);
@@ -175,6 +200,57 @@ export function BookingRulesPage(): JSX.Element {
     setFormError(null);
     setIsFormOpen(true);
   }
+
+  useEffect(() => {
+    const editParam = searchParams.get("edit");
+    if (!editParam) {
+      handledEditParamRef.current = null;
+      return;
+    }
+
+    if (loading || handledEditParamRef.current === editParam) {
+      return;
+    }
+
+    const ruleId = Number(editParam);
+    if (!Number.isInteger(ruleId) || ruleId <= 0) {
+      handledEditParamRef.current = editParam;
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("edit");
+      setSearchParams(nextParams, { replace: true });
+      return;
+    }
+
+    const rule = rules.find((item) => item.id === ruleId);
+    if (!rule) {
+      return;
+    }
+
+    handledEditParamRef.current = editParam;
+    openEditForm(rule);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("edit");
+    setSearchParams(nextParams, { replace: true });
+  }, [loading, rules, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const state = location.state as { openCreate?: boolean; resourceTypeId?: number } | null;
+    if (loading || handledCreateStateRef.current || !state?.openCreate) {
+      return;
+    }
+
+    handledCreateStateRef.current = true;
+    setFormMode("create");
+    setEditingRuleId(null);
+    setFormError(null);
+    setFormState({
+      ...defaultFormState,
+      resourceTypeId:
+        typeof state.resourceTypeId === "number" && state.resourceTypeId > 0 ? String(state.resourceTypeId) : "",
+    });
+    setIsFormOpen(true);
+    navigate(location.pathname + location.search, { replace: true, state: null });
+  }, [loading, location.pathname, location.search, location.state, navigate]);
 
   function validateForm(): string | null {
     const resourceTypeId = Number(formState.resourceTypeId);
@@ -280,7 +356,7 @@ export function BookingRulesPage(): JSX.Element {
       />
 
       {isFormOpen ? (
-        <div className="rules-form-panel">
+        <div ref={formPanelRef} className="rules-form-panel">
           <div className="rules-form-panel__header">
             <div>
               <h3>{formMode === "create" ? t("pages.bookingRules.form.createTitle") : t("pages.bookingRules.form.editTitle")}</h3>
@@ -297,6 +373,7 @@ export function BookingRulesPage(): JSX.Element {
             <label className="field">
               <span>{t("pages.bookingRules.form.fields.resourceType")}</span>
               <select
+                ref={firstInputRef}
                 value={formState.resourceTypeId}
                 onChange={(event) => setFormState((current) => ({ ...current, resourceTypeId: event.target.value }))}
               >
@@ -352,8 +429,10 @@ export function BookingRulesPage(): JSX.Element {
                 onChange={(event) => setFormState((current) => ({ ...current, bookingHorizonDays: event.target.value }))}
               />
             </label>
+          </div>
 
-            <div className="toggle-switch-field">
+          <div className="booking-rule-toggle-grid">
+            <div className="booking-rule-toggle-field">
               <ToggleSwitch
                 checked={formState.requiresApproval}
                 label={t("pages.bookingRules.form.fields.requiresApproval")}
@@ -361,13 +440,15 @@ export function BookingRulesPage(): JSX.Element {
               />
             </div>
 
-            <div className="toggle-switch-field">
+            <div className="booking-rule-toggle-field">
               <ToggleSwitch
                 checked={formState.isActive}
                 label={t("pages.bookingRules.form.fields.isActive")}
                 onChange={(checked) => setFormState((current) => ({ ...current, isActive: checked }))}
               />
-              <p className="muted toggle-switch-field__hint">{t("pages.bookingRules.form.fields.isActiveHint")}</p>
+              <p className="muted booking-rule-toggle-field__hint">
+                {t("pages.bookingRules.form.fields.isActiveHint")}
+              </p>
             </div>
           </div>
 

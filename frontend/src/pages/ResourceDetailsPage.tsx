@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -42,7 +42,7 @@ function mapBookingError(error: ApiError, t: ReturnType<typeof useTranslation>["
   switch (message) {
     case "invalid booking payload":
       return t("pages.resourceDetails.booking.errors.invalidPayload");
-    case "booking start time must be in the future":
+    case "booking start time cannot be earlier than the current minute":
       return t("pages.resourceDetails.booking.errors.startInPast");
     case "resource not found":
       return t("pages.resourceDetails.booking.errors.resourceNotFound");
@@ -93,6 +93,31 @@ function toLocalInputValue(isoString: string): string {
   return toDateTimeLocalValue(new Date(isoString));
 }
 
+function getCurrentLocalMinute(): Date {
+  const current = new Date();
+  current.setSeconds(0, 0);
+  return current;
+}
+
+function EditIcon(): JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />
+    </svg>
+  );
+}
+
 export function ResourceDetailsPage(): JSX.Element {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -124,7 +149,9 @@ export function ResourceDetailsPage(): JSX.Element {
   const [availabilityActionError, setAvailabilityActionError] = useState<string | null>(null);
   const [isAvailabilitySubmitting, setIsAvailabilitySubmitting] = useState(false);
   const [pendingAvailabilityId, setPendingAvailabilityId] = useState<number | null>(null);
-  const startAtMin = toDateTimeLocalValue(new Date());
+  const availabilityFormRef = useRef<HTMLFormElement | null>(null);
+  const bookingRuleActionButtonRef = useRef<HTMLButtonElement | null>(null);
+  const startAtMin = toDateTimeLocalValue(getCurrentLocalMinute());
 
   useEffect(() => {
     void loadResourceDetails();
@@ -250,7 +277,7 @@ export function ResourceDetailsPage(): JSX.Element {
       return t("pages.resourceDetails.booking.errors.invalidDates");
     }
 
-    if (startValue <= new Date()) {
+    if (startValue.getTime() < getCurrentLocalMinute().getTime()) {
       return t("pages.resourceDetails.booking.errors.startInPast");
     }
 
@@ -310,6 +337,38 @@ export function ResourceDetailsPage(): JSX.Element {
     setAvailabilityEndAt(toLocalInputValue(slot.end_at));
     setAvailabilityFormError(null);
     setIsAvailabilityFormOpen(true);
+  }
+
+  useEffect(() => {
+    if (!isAdmin || !isAvailabilityFormOpen) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      availabilityFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [availabilityFormMode, editingAvailabilityId, isAdmin, isAvailabilityFormOpen]);
+
+  function openBookingRuleEditor(): void {
+    if (!resource) {
+      return;
+    }
+
+    if (activeBookingRule) {
+      navigate(`/booking-rules?edit=${activeBookingRule.id}`);
+      return;
+    }
+
+    navigate("/booking-rules", {
+      state: {
+        openCreate: true,
+        resourceTypeId: resource.type_id,
+      },
+    });
   }
 
   function validateAvailabilityForm(): string | null {
@@ -547,6 +606,21 @@ export function ResourceDetailsPage(): JSX.Element {
               <div className="resource-details-card__heading">
                 <h3 className="resource-details-card__title">{t("pages.resourceDetails.rule.title")}</h3>
               </div>
+              {isAdmin ? (
+                <button
+                  type="button"
+                  ref={bookingRuleActionButtonRef}
+                  className="btn btn-secondary btn-icon"
+                  onClick={openBookingRuleEditor}
+                >
+                  <EditIcon />
+                  <span>
+                    {activeBookingRule
+                      ? t("pages.resourceDetails.rule.actions.edit")
+                      : t("pages.resourceDetails.rule.actions.configure")}
+                  </span>
+                </button>
+              ) : null}
             </div>
 
             {activeBookingRule ? (
@@ -603,7 +677,7 @@ export function ResourceDetailsPage(): JSX.Element {
             <p className="muted resource-details-hint">{t("pages.resourceDetails.availability.hint")}</p>
 
             {isAdmin && isAvailabilityFormOpen ? (
-              <form className="resource-availability-form" onSubmit={handleAvailabilitySubmit}>
+              <form ref={availabilityFormRef} className="resource-availability-form" onSubmit={handleAvailabilitySubmit}>
                 <DateTimeField
                   label={t("pages.resourceDetails.availability.form.startAt")}
                   value={availabilityStartAt}

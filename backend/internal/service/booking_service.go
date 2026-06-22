@@ -22,7 +22,7 @@ var (
 	ErrBookingHorizonExceeded     = errors.New("booking horizon exceeded")
 	ErrBookingForbidden           = errors.New("booking action is forbidden")
 	ErrBookingInvalidStatusAction = errors.New("invalid booking status transition")
-	ErrBookingStartNotFuture      = errors.New("booking start time must be in the future")
+	ErrBookingStartNotFuture      = errors.New("booking start time cannot be earlier than the current minute")
 	ErrBookingResourceUnavailable = errors.New("resource is inactive or not bookable")
 	ErrBookingCompleteTooEarly    = errors.New("booking cannot be completed before end_at")
 )
@@ -54,6 +54,15 @@ func NewBookingService(
 }
 
 func (s *BookingService) Create(ctx context.Context, userID int64, req dto.CreateBookingRequest) (dto.BookingResponse, error) {
+	return s.CreateAt(ctx, userID, req, time.Now().UTC())
+}
+
+func (s *BookingService) CreateAt(
+	ctx context.Context,
+	userID int64,
+	req dto.CreateBookingRequest,
+	now time.Time,
+) (dto.BookingResponse, error) {
 	if userID <= 0 || req.ResourceID <= 0 {
 		logBookingRejection(ctx, "booking create rejected: invalid identifiers",
 			"actor_user_id", userID,
@@ -72,12 +81,15 @@ func (s *BookingService) Create(ctx context.Context, userID int64, req dto.Creat
 		)
 		return dto.BookingResponse{}, err
 	}
-	if !startAt.After(time.Now().UTC()) {
+	now = now.UTC()
+	currentMinute := now.Truncate(time.Minute)
+	if startAt.Before(currentMinute) {
 		logBookingRejection(ctx, "booking create rejected: start time is not in the future",
 			"actor_user_id", userID,
 			"resource_id", req.ResourceID,
 			"start_at", startAt,
 			"end_at", endAt,
+			"current_minute", currentMinute,
 		)
 		return dto.BookingResponse{}, ErrBookingStartNotFuture
 	}
@@ -162,7 +174,7 @@ func (s *BookingService) Create(ctx context.Context, userID int64, req dto.Creat
 		return dto.BookingResponse{}, ErrBookingLimitExceeded
 	}
 
-	horizonBoundary := time.Now().UTC().AddDate(0, 0, int(rule.BookingHorizonDays))
+	horizonBoundary := now.AddDate(0, 0, int(rule.BookingHorizonDays))
 	if endAt.After(horizonBoundary) {
 		logBookingRejection(ctx, "booking create rejected: booking horizon exceeded",
 			"resource_id", req.ResourceID,

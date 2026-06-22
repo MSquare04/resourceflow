@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { listDepartments } from "../api/departments";
@@ -8,6 +8,7 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
 import { PageHeader } from "../components/PageHeader";
+import { ToggleSwitch } from "../components/ToggleSwitch";
 import type { RoleCode } from "../types/auth";
 import type { CreateUserPayload, Department, UpdateUserPayload, User } from "../types/users";
 
@@ -78,10 +79,29 @@ export function UsersPage(): JSX.Element {
   const [formState, setFormState] = useState<UserFormState>(defaultFormState);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const formPanelRef = useRef<HTMLDivElement | null>(null);
+  const firstInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     void loadUsersPage();
   }, []);
+
+  useEffect(() => {
+    if (!isFormOpen) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      formPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.setTimeout(() => {
+        firstInputRef.current?.focus({ preventScroll: true });
+      }, 150);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [editingUserId, formMode, isFormOpen]);
 
   async function loadUsersPage(): Promise<void> {
     setLoading(true);
@@ -254,7 +274,7 @@ export function UsersPage(): JSX.Element {
       />
 
       {isFormOpen ? (
-        <div className="users-form-panel">
+        <div ref={formPanelRef} className="users-form-panel">
           <div className="users-form-panel__header">
             <div>
               <h3>{formMode === "create" ? t("pages.users.form.createTitle") : t("pages.users.form.editTitle")}</h3>
@@ -272,6 +292,7 @@ export function UsersPage(): JSX.Element {
               <span>{t("pages.users.form.fields.fullName")}</span>
               <input
                 type="text"
+                ref={firstInputRef}
                 value={formState.fullName}
                 onChange={(event) => setFormState((current) => ({ ...current, fullName: event.target.value }))}
                 required
@@ -320,27 +341,27 @@ export function UsersPage(): JSX.Element {
               </select>
             </label>
 
-            <label className="field field-checkbox">
-              <span>{t("pages.users.form.fields.isActive")}</span>
-              <input
-                type="checkbox"
+            <div className="toggle-switch-field">
+              <ToggleSwitch
                 checked={formState.isActive}
-                onChange={(event) => setFormState((current) => ({ ...current, isActive: event.target.checked }))}
+                label={t("pages.users.form.fields.isActive")}
+                onChange={(checked) => setFormState((current) => ({ ...current, isActive: checked }))}
               />
-            </label>
+            </div>
           </div>
 
           <div className="users-roles-field">
             <span className="users-roles-field__label">{t("pages.users.form.fields.roles")}</span>
             <div className="users-roles-options">
               {roleOptions.map((role) => (
-                <label key={role} className="users-role-option">
+                <label key={role} className="selection-checkbox">
                   <input
                     type="checkbox"
                     checked={formState.roles.includes(role)}
                     onChange={() => toggleRole(role)}
                   />
-                  <span>{t(`roles.${role}`)}</span>
+                  <span className="selection-checkbox__box" aria-hidden="true" />
+                  <span className="selection-checkbox__label">{t(`roles.${role}`)}</span>
                 </label>
               ))}
             </div>
