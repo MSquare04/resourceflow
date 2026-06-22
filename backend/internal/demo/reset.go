@@ -728,18 +728,13 @@ func seedAvailability(ctx context.Context, tx *sql.Tx, resources map[string]reso
 	pastDay := dayStart.AddDate(0, 0, -2)
 
 	intervalsByResource := map[string][]timeWindow{
-		"neva":          buildDailyWindows(startFromTomorrow, 7, 9, 0, 18, 0),
-		"volga":         buildDailyWindows(startFromTomorrow, 7, 10, 0, 19, 0),
-		"skoda-octavia": buildDailyWindows(startFromTomorrow, 7, 8, 0, 20, 0),
-		"epson-eb-fh52": buildDailyWindows(startFromTomorrow, 7, 9, 0, 18, 0),
-		"workspace-a17": buildDailyWindows(startFromTomorrow, 7, 6, 0, 22, 0),
+		"neva":  buildDailyWindows(startFromTomorrow, 7, 9, 0, 18, 0),
+		"volga": buildDailyWindows(startFromTomorrow, 7, 10, 0, 19, 0),
 	}
 
 	pastWindows := map[string][]timeWindow{
-		"neva":          {{start: dayAt(pastDay, 9, 0), end: dayAt(pastDay, 18, 0)}},
-		"volga":         {{start: dayAt(pastDay, 10, 0), end: dayAt(pastDay, 19, 0)}},
-		"skoda-octavia": {{start: dayAt(pastDay, 8, 0), end: dayAt(pastDay, 20, 0)}},
-		"epson-eb-fh52": {{start: dayAt(pastDay, 9, 0), end: dayAt(pastDay, 18, 0)}},
+		"neva":  {{start: dayAt(pastDay, 9, 0), end: dayAt(pastDay, 18, 0)}},
+		"volga": {{start: dayAt(pastDay, 10, 0), end: dayAt(pastDay, 19, 0)}},
 	}
 
 	total := 0

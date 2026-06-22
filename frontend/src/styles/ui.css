@@ -265,6 +265,12 @@
   font-weight: 600;
 }
 
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
 .resources-form-grid select {
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -503,6 +509,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
+  align-items: start;
 }
 
 .resource-details-card {
@@ -515,12 +522,20 @@
   min-width: 0;
 }
 
+.resource-details-card--rule {
+  align-self: start;
+}
+
 .resource-details-card__header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
   min-width: 0;
+}
+
+.resource-details-card__header .btn-icon {
+  flex: 0 0 auto;
 }
 
 .resource-details-card__heading {
@@ -564,6 +579,34 @@
 }
 
 .resource-details-meta dd {
+  margin: 0;
+  font-weight: 500;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.resource-details-rule-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem 1rem;
+  margin: 0;
+}
+
+.resource-details-rule-meta__item {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.resource-details-rule-meta__label {
+  margin: 0;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.resource-details-rule-meta__value {
   margin: 0;
   font-weight: 500;
   min-width: 0;
@@ -909,6 +952,77 @@
   background: rgba(255, 255, 255, 0.72);
 }
 
+.selection-checkbox {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+  transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.selection-checkbox:hover {
+  border-color: rgba(11, 114, 133, 0.28);
+  background: rgba(11, 114, 133, 0.05);
+}
+
+.selection-checkbox input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.selection-checkbox__box {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 0.32rem;
+  border: 1px solid rgba(100, 116, 139, 0.45);
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.selection-checkbox__box::after {
+  content: "";
+  width: 0.55rem;
+  height: 0.3rem;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg) scale(0);
+  transition: transform 0.18s ease;
+  margin-bottom: 0.08rem;
+}
+
+.selection-checkbox__label {
+  font-weight: 600;
+}
+
+.selection-checkbox input:checked + .selection-checkbox__box {
+  border-color: rgba(11, 114, 133, 0.5);
+  background: rgba(11, 114, 133, 0.92);
+}
+
+.selection-checkbox input:checked + .selection-checkbox__box::after {
+  transform: rotate(-45deg) scale(1);
+}
+
+.selection-checkbox input:focus-visible + .selection-checkbox__box {
+  outline: 2px solid rgba(11, 114, 133, 0.35);
+  outline-offset: 3px;
+}
+
+.selection-checkbox input:disabled + .selection-checkbox__box,
+.selection-checkbox input:disabled ~ .selection-checkbox__label {
+  opacity: 0.6;
+}
+
 .users-form-actions {
   display: flex;
   justify-content: flex-start;
@@ -1059,10 +1173,37 @@
   justify-content: flex-start;
 }
 
+.booking-rule-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+  align-items: stretch;
+}
+
+.booking-rule-toggle-field {
+  display: grid;
+  align-content: center;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.booking-rule-toggle-field .toggle-switch {
+  align-items: center;
+}
+
+.booking-rule-toggle-field__hint {
+  margin: 0;
+}
+
 .toggle-switch-field {
   display: grid;
   gap: 0.45rem;
   align-content: start;
+  min-width: 0;
 }
 
 .toggle-switch-field__hint {
@@ -1174,7 +1315,8 @@
   .resources-form-grid,
   .users-list,
   .rules-form-grid,
-  .rules-list {
+  .rules-list,
+  .booking-rule-toggle-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1241,6 +1383,7 @@
   }
 
   .resource-details-meta,
+  .resource-details-rule-meta,
   .availability-list,
   .busy-interval-card,
   .availability-card,

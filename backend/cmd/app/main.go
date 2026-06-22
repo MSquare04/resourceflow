@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -23,7 +27,7 @@ import (
 	"resourceflow/backend/internal/service"
 )
 
-const expectedMigrationVersion int64 = 8
+const expectedMigrationVersion int64 = 9
 
 func main() {
 	// Local development convenience: load env from .env if present.
@@ -89,6 +93,7 @@ func main() {
 	resourceAvailabilityService := service.NewResourceAvailabilityService(resourceAvailabilityRepository, resourceRepository, bookingRepository)
 	bookingRuleService := service.NewBookingRuleService(bookingRuleRepository, resourceTypeRepository)
 	bookingService := service.NewBookingService(bookingRepository, resourceRepository, userRepository, bookingRuleRepository)
+	bookingExpirationWorker := service.NewBookingExpirationWorker(bookingService, time.Minute)
 
 	router.Register(e, router.Dependencies{
 		HealthHandler:               handler.NewHealthHandler(postgres),
@@ -105,10 +110,39 @@ func main() {
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.HTTP.Host, cfg.HTTP.Port)
+	serverCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	bookingExpirationWorker.Start(serverCtx)
 	appLogger.Info("starting http server", "address", addr)
-	if err := e.Start(addr); err != nil {
-		appLogger.Error("echo server stopped", "error", err)
-		os.Exit(1)
+	httpServer := &http.Server{
+		Addr:    addr,
+		Handler: e,
+	}
+
+	serverErrCh := make(chan error, 1)
+	go func() {
+		serverErrCh <- httpServer.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serverErrCh:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			appLogger.Error("echo server stopped", "error", err)
+			os.Exit(1)
+		}
+	case <-serverCtx.Done():
+		appLogger.Info("shutdown signal received")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			appLogger.Error("http server shutdown failed", "error", err)
+			os.Exit(1)
+		}
+
+		if err := <-serverErrCh; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			appLogger.Error("echo server stopped during shutdown", "error", err)
+			os.Exit(1)
+		}
 	}
 }
 

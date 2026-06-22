@@ -228,6 +228,10 @@ func (s *ResourceAvailabilityService) ensureActiveBookingsRemainCovered(
 		return ErrResourceAvailabilityNotFound
 	}
 
+	if len(nextAvailability) == 0 {
+		return nil
+	}
+
 	bookings, err := s.bookings.List(ctx)
 	if err != nil {
 		return err

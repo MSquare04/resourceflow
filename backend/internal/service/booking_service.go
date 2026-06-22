@@ -22,8 +22,9 @@ var (
 	ErrBookingHorizonExceeded     = errors.New("booking horizon exceeded")
 	ErrBookingForbidden           = errors.New("booking action is forbidden")
 	ErrBookingInvalidStatusAction = errors.New("invalid booking status transition")
-	ErrBookingStartNotFuture      = errors.New("booking start time must be in the future")
+	ErrBookingStartNotFuture      = errors.New("booking start time cannot be earlier than the current minute")
 	ErrBookingResourceUnavailable = errors.New("resource is inactive or not bookable")
+	ErrBookingCompleteTooEarly    = errors.New("booking cannot be completed before end_at")
 )
 
 var activeBookingStatuses = []string{
@@ -53,6 +54,15 @@ func NewBookingService(
 }
 
 func (s *BookingService) Create(ctx context.Context, userID int64, req dto.CreateBookingRequest) (dto.BookingResponse, error) {
+	return s.CreateAt(ctx, userID, req, time.Now().UTC())
+}
+
+func (s *BookingService) CreateAt(
+	ctx context.Context,
+	userID int64,
+	req dto.CreateBookingRequest,
+	now time.Time,
+) (dto.BookingResponse, error) {
 	if userID <= 0 || req.ResourceID <= 0 {
 		logBookingRejection(ctx, "booking create rejected: invalid identifiers",
 			"actor_user_id", userID,
@@ -71,12 +81,15 @@ func (s *BookingService) Create(ctx context.Context, userID int64, req dto.Creat
 		)
 		return dto.BookingResponse{}, err
 	}
-	if !startAt.After(time.Now().UTC()) {
+	now = now.UTC()
+	currentMinute := now.Truncate(time.Minute)
+	if startAt.Before(currentMinute) {
 		logBookingRejection(ctx, "booking create rejected: start time is not in the future",
 			"actor_user_id", userID,
 			"resource_id", req.ResourceID,
 			"start_at", startAt,
 			"end_at", endAt,
+			"current_minute", currentMinute,
 		)
 		return dto.BookingResponse{}, ErrBookingStartNotFuture
 	}
@@ -161,7 +174,7 @@ func (s *BookingService) Create(ctx context.Context, userID int64, req dto.Creat
 		return dto.BookingResponse{}, ErrBookingLimitExceeded
 	}
 
-	horizonBoundary := time.Now().UTC().AddDate(0, 0, int(rule.BookingHorizonDays))
+	horizonBoundary := now.AddDate(0, 0, int(rule.BookingHorizonDays))
 	if endAt.After(horizonBoundary) {
 		logBookingRejection(ctx, "booking create rejected: booking horizon exceeded",
 			"resource_id", req.ResourceID,
@@ -379,6 +392,16 @@ func (s *BookingService) Cancel(ctx context.Context, id int64, actorUserID int64
 }
 
 func (s *BookingService) Complete(ctx context.Context, id int64, actorUserID int64, isPrivileged bool) (dto.BookingResponse, error) {
+	return s.CompleteAt(ctx, id, actorUserID, isPrivileged, time.Now().UTC())
+}
+
+func (s *BookingService) CompleteAt(
+	ctx context.Context,
+	id int64,
+	actorUserID int64,
+	isPrivileged bool,
+	now time.Time,
+) (dto.BookingResponse, error) {
 	booking, err := s.getBookingForAction(ctx, id)
 	if err != nil {
 		return dto.BookingResponse{}, err
@@ -403,7 +426,23 @@ func (s *BookingService) Complete(ctx context.Context, id int64, actorUserID int
 		return dto.BookingResponse{}, ErrBookingInvalidStatusAction
 	}
 
-	now := time.Now().UTC()
+	now = now.UTC()
+	if booking.EndAt.UTC().After(now) {
+		logBookingRejection(ctx, "booking complete rejected: booking has not ended yet",
+			"booking_id", booking.ID,
+			"resource_id", booking.ResourceID,
+			"booking_user_id", booking.UserID,
+			"actor_user_id", actorUserID,
+			"status", booking.Status,
+			"status_from", booking.Status,
+			"status_to", model.BookingStatusCompleted,
+			"start_at", booking.StartAt.UTC(),
+			"end_at", booking.EndAt.UTC(),
+			"now", now,
+		)
+		return dto.BookingResponse{}, ErrBookingCompleteTooEarly
+	}
+
 	updated, statusFrom, err := s.bookings.TransitionStatus(ctx, id, []string{
 		model.BookingStatusConfirmed,
 	}, repository.UpdateBookingStatusParams{
@@ -436,6 +475,27 @@ func (s *BookingService) Complete(ctx context.Context, id int64, actorUserID int
 	)
 
 	return mapBookingResponse(updated), nil
+}
+
+func (s *BookingService) ProcessExpiredBookings(
+	ctx context.Context,
+	now time.Time,
+) (repository.ExpiredBookingProcessingResult, error) {
+	now = now.UTC()
+	result, err := s.bookings.ProcessExpired(ctx, now)
+	if err != nil {
+		return repository.ExpiredBookingProcessingResult{}, err
+	}
+
+	if result.CompletedCount > 0 || result.CancelledCount > 0 {
+		logBookingEvent(ctx, "expired bookings processed",
+			"completed_count", result.CompletedCount,
+			"cancelled_count", result.CancelledCount,
+			"processed_at", now,
+		)
+	}
+
+	return result, nil
 }
 
 func (s *BookingService) Approve(ctx context.Context, id int64, approverUserID int64) (dto.BookingResponse, error) {

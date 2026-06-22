@@ -35,7 +35,7 @@ func (h *BookingHandler) Create(c *echo.Context) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrBookingStartNotFuture):
-			return validationError(c, "booking start time must be in the future")
+			return validationError(c, "booking start time cannot be earlier than the current minute")
 		case errors.Is(err, service.ErrValidation):
 			return validationError(c, "invalid booking payload")
 		case errors.Is(err, service.ErrBookingResourceUnavailable):
@@ -263,6 +263,14 @@ func handleBookingActionError(c *echo.Context, err error, operation string, book
 		return validationError(c, "invalid booking id")
 	case errors.Is(err, service.ErrBookingNotFound):
 		return notFoundError(c, "booking not found")
+	case errors.Is(err, service.ErrBookingCompleteTooEarly):
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Success: false,
+			Error: dto.APIError{
+				Code:    dto.ErrorCodeBookingTooEarlyToComplete,
+				Message: "booking cannot be completed before end_at",
+			},
+		})
 	case errors.Is(err, service.ErrBookingInvalidStatusAction):
 		return validationError(c, "booking status transition is not allowed")
 	default:

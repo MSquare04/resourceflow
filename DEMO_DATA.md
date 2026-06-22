@@ -1,21 +1,28 @@
-# Demo data reset
+# Demo reset для локальной БД
 
-## Requirements
+## Назначение demo reset
 
-- Local or development environment only: `APP_ENV=development` or `APP_ENV=local`
-- Configured local PostgreSQL matching the backend `.env`
-- Applied migrations, including `000008`
-- `DEMO_SEED_PASSWORD` set before reset
+`make demo-reset` нужен для полной очистки прикладных данных локальной базы ResourceFlow и повторного заполнения её реалистичным демонстрационным набором.
 
-## Command
+Команда полезна для:
 
-From the repository root:
+- повторяемой локальной демонстрации интерфейсов и сценариев;
+- быстрой подготовки среды для ручной проверки;
+- возврата базы к известному состоянию без дублей и накопленного тестового мусора.
 
-```bash
-DEMO_RESET_CONFIRM=YES DEMO_SEED_PASSWORD='your-password' make demo-reset
-```
+## Требования перед запуском
 
-Windows PowerShell:
+Перед запуском должны быть выполнены следующие условия:
+
+- `APP_ENV=development` или `APP_ENV=local`;
+- локальный PostgreSQL настроен в соответствии с backend `.env`;
+- все backend-миграции уже применены;
+- обязательно должна быть применена миграция `000009_relax_availability_requirement`;
+- задана переменная `DEMO_SEED_PASSWORD`.
+
+## Запуск в PowerShell
+
+Из корня репозитория:
 
 ```powershell
 $env:DEMO_RESET_CONFIRM='YES'
@@ -23,48 +30,93 @@ $env:DEMO_SEED_PASSWORD='your-password'
 make demo-reset
 ```
 
-## Safety guards
+Команда для Unix-shell остаётся такой же:
 
-- The command refuses to run outside `development` / `local`
-- The command requires explicit confirmation: `DEMO_RESET_CONFIRM=YES`
-- The shared demo password is read only from `DEMO_SEED_PASSWORD`
-- The reset deletes all application data in the local database
-- Migration history is preserved
+```bash
+DEMO_RESET_CONFIRM=YES DEMO_SEED_PASSWORD='your-password' make demo-reset
+```
 
-## Demo accounts
+## Защитные ограничения
 
-Password is intentionally not stored in the repository. Use the value passed in `DEMO_SEED_PASSWORD`.
+- Команда отказывается запускаться вне `development` / `local`.
+- Для запуска требуется явное подтверждение: `DEMO_RESET_CONFIRM=YES`.
+- Общий пароль демонстрационных пользователей читается только из `DEMO_SEED_PASSWORD`.
+- Очистка и повторное заполнение выполняются как единая операция reset + seed.
 
-- `anna.smirnova@resourceflow.example` - `admin` - `Administratsiya`
-- `mikhail.volkov@resourceflow.example` - `manager` - `Ekspluatatsiya`
-- `elena.kuznetsova@resourceflow.example` - `employee` - `Informatsionnye tekhnologii`
-- `olga.petrova@resourceflow.example` - `hr` - `Otdel personala`
-- `alexey.orlov@resourceflow.example` - `interviewer` - `Prodazhi`
-- `igor.sokolov@resourceflow.example` - `employee` - `Informatsionnye tekhnologii` - inactive
+## Что удаляется и что сохраняется
 
-## Demo flow
+Во время `make demo-reset` удаляются все прикладные данные целевой локальной БД:
 
-### Admin
+- подразделения;
+- пользователи и их роли;
+- категории ресурсов;
+- типы ресурсов;
+- правила бронирования;
+- ресурсы;
+- интервалы availability;
+- бронирования.
 
-- Sign in as `anna.smirnova@resourceflow.example`
-- Open `Resources` and verify the warning for `Rabochee mesto A-17`
-- Open `Booking Rules` and confirm the disabled rule for `Rabochee mesto`
-- Open `Users` and verify the inactive user
+При этом сохраняются:
 
-### Manager
+- история миграций;
+- служебная структура схемы;
+- справочник ролей;
+- сами миграционные файлы.
 
-- Sign in as `mikhail.volkov@resourceflow.example`
-- Open `Bookings`
-- Approve or reject pending requests
-- Complete a confirmed booking if needed
+## Новая семантика дополнительных ограничений времени
 
-### Employee
+Для availability теперь действует следующая логика:
 
-- Sign in as `elena.kuznetsova@resourceflow.example`
-- Open `Dashboard`, `Resources`, `My Bookings`
-- Check busy intervals on resource details
-- Create or cancel bookings within seeded availability
+- если availability отсутствует, ресурс доступен в пределах правила бронирования;
+- если availability существует, бронь должна полностью входить в один интервал.
 
-## Warning
+Иными словами, availability — это необязательное дополнительное ограничение времени, а не обязательное условие для каждого ресурса.
 
-`make demo-reset` fully deletes application data in the target local database and recreates demo data from scratch.
+## Демонстрационные аккаунты
+
+Пароль в репозитории не хранится. Для входа используйте значение `DEMO_SEED_PASSWORD`.
+
+- `anna.smirnova@resourceflow.example` — `admin` — Администрация
+- `mikhail.volkov@resourceflow.example` — `manager` — Эксплуатация
+- `elena.kuznetsova@resourceflow.example` — `employee` — Информационные технологии
+- `olga.petrova@resourceflow.example` — `hr` — Отдел персонала
+- `alexey.orlov@resourceflow.example` — `interviewer` — Продажи
+- `igor.sokolov@resourceflow.example` — `employee` — Информационные технологии — неактивный пользователь
+
+## Краткий сценарий администратора
+
+- Войти под `anna.smirnova@resourceflow.example`.
+- Открыть страницу ресурсов и проверить предупреждение для ресурса `Рабочее место A-17`.
+- Проверить, что дополнительные ограничения времени заданы только для 1–2 ресурсов, а остальные ресурсы можно бронировать в пределах правил.
+- Открыть `Booking Rules` и убедиться, что для типа `Рабочее место` создано отключённое правило.
+- Открыть `Users` и проверить наличие неактивного пользователя.
+
+## Краткий сценарий менеджера
+
+- Войти под `mikhail.volkov@resourceflow.example`.
+- Открыть страницу `Bookings`.
+- Подтвердить или отклонить заявки в статусе `pending`.
+- Завершить подтверждённую бронь, если требуется проверить жизненный цикл.
+
+## Краткий сценарий сотрудника
+
+- Войти под `elena.kuznetsova@resourceflow.example`.
+- Открыть `Dashboard`, `Resources` и `My Bookings`.
+- Проверить занятые интервалы на странице ресурса.
+- Создать или отменить бронирование.
+- Проверить сценарий для ресурса без availability и отдельно для ресурса с дополнительными ограничениями времени.
+
+## Актуальные счётчики
+
+- подразделения — `5`;
+- пользователи — `6`;
+- категории ресурсов — `4`;
+- типы ресурсов — `5`;
+- правила бронирования — `5`;
+- ресурсы — `7`;
+- интервалы availability — `16`;
+- бронирования — `9`.
+
+## Важное предупреждение
+
+`make demo-reset` удаляет **все прикладные данные** целевой локальной БД и заново создаёт демонстрационный набор. Используйте команду только для локальной среды, где такая очистка допустима.

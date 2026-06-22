@@ -21,6 +21,7 @@ type bookingRepoMock struct {
 	countByStatusesFn  func(ctx context.Context, userID int64, statuses []string) (int64, error)
 	hasConflictFn      func(ctx context.Context, resourceID int64, startAt, endAt time.Time, statuses []string) (bool, error)
 	isCoveredFn        func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error)
+	processExpiredFn   func(ctx context.Context, now time.Time) (repository.ExpiredBookingProcessingResult, error)
 	updateStatusFn     func(ctx context.Context, id int64, params repository.UpdateBookingStatusParams) (model.Booking, error)
 	transitionStatusFn func(ctx context.Context, id int64, expectedFrom []string, params repository.UpdateBookingStatusParams) (model.Booking, string, error)
 }
@@ -84,6 +85,13 @@ func (m *bookingRepoMock) IsCoveredByAvailability(ctx context.Context, resourceI
 		return m.isCoveredFn(ctx, resourceID, startAt, endAt)
 	}
 	return false, errUnexpectedCall
+}
+
+func (m *bookingRepoMock) ProcessExpired(ctx context.Context, now time.Time) (repository.ExpiredBookingProcessingResult, error) {
+	if m.processExpiredFn != nil {
+		return m.processExpiredFn(ctx, now)
+	}
+	return repository.ExpiredBookingProcessingResult{}, errUnexpectedCall
 }
 
 func (m *bookingRepoMock) UpdateStatus(ctx context.Context, id int64, params repository.UpdateBookingStatusParams) (model.Booking, error) {
