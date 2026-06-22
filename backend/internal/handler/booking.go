@@ -70,17 +70,11 @@ func (h *BookingHandler) List(c *echo.Context) error {
 	}
 	ctx := service.WithRequestID(c.Request().Context(), requestID(c))
 
-	isPrivileged := auth.HasAnyRole(currentUser, "admin", "manager")
-
-	var (
-		bookings []dto.BookingResponse
-		err      error
-	)
-	if isPrivileged {
-		bookings, err = h.bookings.List(ctx)
-	} else {
-		bookings, err = h.bookings.ListByUserID(ctx, currentUser.UserID)
+	if !auth.HasAnyRole(currentUser, "admin", "manager") {
+		return forbiddenError(c, "insufficient role")
 	}
+
+	bookings, err := h.bookings.List(ctx)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrValidation):
@@ -261,8 +255,24 @@ func handleBookingActionError(c *echo.Context, err error, operation string, book
 	switch {
 	case errors.Is(err, service.ErrValidation):
 		return validationError(c, "invalid booking id")
+	case errors.Is(err, service.ErrBookingForbidden):
+		return c.JSON(http.StatusForbidden, dto.ErrorResponse{
+			Success: false,
+			Error: dto.APIError{
+				Code:    dto.ErrorCodeBookingForbidden,
+				Message: "booking cannot be modified by this user",
+			},
+		})
 	case errors.Is(err, service.ErrBookingNotFound):
 		return notFoundError(c, "booking not found")
+	case errors.Is(err, service.ErrBookingAlreadyEnded):
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Success: false,
+			Error: dto.APIError{
+				Code:    dto.ErrorCodeBookingAlreadyEnded,
+				Message: "booking has already ended",
+			},
+		})
 	case errors.Is(err, service.ErrBookingCompleteTooEarly):
 		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
 			Success: false,
@@ -272,6 +282,15 @@ func handleBookingActionError(c *echo.Context, err error, operation string, book
 			},
 		})
 	case errors.Is(err, service.ErrBookingInvalidStatusAction):
+		if operation == "booking.cancel" {
+			return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+				Success: false,
+				Error: dto.APIError{
+					Code:    dto.ErrorCodeBookingCancelNotAllowed,
+					Message: "booking status transition is not allowed",
+				},
+			})
+		}
 		return validationError(c, "booking status transition is not allowed")
 	default:
 		return internalError(c, "failed to process booking action", operation, err, "booking_id", bookingID, "user_id", userID)

@@ -179,6 +179,18 @@
   gap: 1rem;
 }
 
+.settings-form-panel {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(243, 245, 249, 0.92) 100%);
+  padding: 1rem;
+}
+
+.settings-form-panel__actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
 .resources-form-panel__header {
   display: flex;
   align-items: flex-start;

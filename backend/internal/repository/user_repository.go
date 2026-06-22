@@ -17,6 +17,7 @@ type UserRepository interface {
 	Create(ctx context.Context, params CreateUserParams) (model.User, error)
 	List(ctx context.Context) ([]model.User, error)
 	Update(ctx context.Context, id int64, params UpdateUserParams) (model.User, error)
+	UpdatePassword(ctx context.Context, id int64, params UpdateUserPasswordParams) (model.User, error)
 	ListRolesByUserID(ctx context.Context, userID int64) ([]string, error)
 	ValidateRoleCodes(ctx context.Context, roleCodes []string) error
 	ReplaceRolesByUserID(ctx context.Context, userID int64, roleCodes []string) error
@@ -44,13 +45,17 @@ type UpdateUserParams struct {
 	IsActive     bool
 }
 
+type UpdateUserPasswordParams struct {
+	PasswordHash string
+}
+
 func NewUserRepository(db *sql.DB) *PostgresUserRepository {
 	return &PostgresUserRepository{db: db}
 }
 
 func (r *PostgresUserRepository) FindByEmail(ctx context.Context, email string) (model.User, error) {
 	query := `
-SELECT id, full_name, email, password_hash, department_id, is_active
+SELECT id, full_name, email, password_hash, auth_version, department_id, is_active
 FROM app.users
 WHERE lower(email) = lower($1)
 LIMIT 1;
@@ -63,6 +68,7 @@ LIMIT 1;
 		&user.FullName,
 		&user.Email,
 		&user.PasswordHash,
+		&user.AuthVersion,
 		&departmentID,
 		&user.IsActive,
 	)
@@ -78,7 +84,7 @@ LIMIT 1;
 
 func (r *PostgresUserRepository) FindByID(ctx context.Context, id int64) (model.User, error) {
 	query := `
-SELECT id, full_name, email, password_hash, department_id, is_active
+SELECT id, full_name, email, password_hash, auth_version, department_id, is_active
 FROM app.users
 WHERE id = $1
 LIMIT 1;
@@ -91,6 +97,7 @@ LIMIT 1;
 		&user.FullName,
 		&user.Email,
 		&user.PasswordHash,
+		&user.AuthVersion,
 		&departmentID,
 		&user.IsActive,
 	)
@@ -108,7 +115,7 @@ func (r *PostgresUserRepository) Create(ctx context.Context, params CreateUserPa
 	query := `
 INSERT INTO app.users (full_name, email, password_hash, department_id, is_active)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, full_name, email, password_hash, department_id, is_active;
+RETURNING id, full_name, email, password_hash, auth_version, department_id, is_active;
 `
 
 	var user model.User
@@ -126,6 +133,7 @@ RETURNING id, full_name, email, password_hash, department_id, is_active;
 		&user.FullName,
 		&user.Email,
 		&user.PasswordHash,
+		&user.AuthVersion,
 		&departmentID,
 		&user.IsActive,
 	)
@@ -141,7 +149,7 @@ RETURNING id, full_name, email, password_hash, department_id, is_active;
 
 func (r *PostgresUserRepository) List(ctx context.Context) ([]model.User, error) {
 	query := `
-SELECT id, full_name, email, password_hash, department_id, is_active
+SELECT id, full_name, email, password_hash, auth_version, department_id, is_active
 FROM app.users
 ORDER BY id;
 `
@@ -156,7 +164,7 @@ ORDER BY id;
 	for rows.Next() {
 		var user model.User
 		var departmentID sql.NullInt64
-		if err := rows.Scan(&user.ID, &user.FullName, &user.Email, &user.PasswordHash, &departmentID, &user.IsActive); err != nil {
+		if err := rows.Scan(&user.ID, &user.FullName, &user.Email, &user.PasswordHash, &user.AuthVersion, &departmentID, &user.IsActive); err != nil {
 			return nil, fmt.Errorf("list users scan failed: %w", err)
 		}
 		if departmentID.Valid {
@@ -182,7 +190,7 @@ SET full_name = $2,
     is_active = $6,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, full_name, email, password_hash, department_id, is_active;
+RETURNING id, full_name, email, password_hash, auth_version, department_id, is_active;
 `
 
 	var user model.User
@@ -201,11 +209,43 @@ RETURNING id, full_name, email, password_hash, department_id, is_active;
 		&user.FullName,
 		&user.Email,
 		&user.PasswordHash,
+		&user.AuthVersion,
 		&departmentID,
 		&user.IsActive,
 	)
 	if err != nil {
 		return model.User{}, fmt.Errorf("update user query failed: %w", err)
+	}
+	if departmentID.Valid {
+		user.DepartmentID = &departmentID.Int64
+	}
+
+	return user, nil
+}
+
+func (r *PostgresUserRepository) UpdatePassword(ctx context.Context, id int64, params UpdateUserPasswordParams) (model.User, error) {
+	query := `
+UPDATE app.users
+SET password_hash = $2,
+    auth_version = auth_version + 1,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING id, full_name, email, password_hash, auth_version, department_id, is_active;
+`
+
+	var user model.User
+	var departmentID sql.NullInt64
+	err := r.db.QueryRowContext(ctx, query, id, params.PasswordHash).Scan(
+		&user.ID,
+		&user.FullName,
+		&user.Email,
+		&user.PasswordHash,
+		&user.AuthVersion,
+		&departmentID,
+		&user.IsActive,
+	)
+	if err != nil {
+		return model.User{}, fmt.Errorf("update user password query failed: %w", err)
 	}
 	if departmentID.Valid {
 		user.DepartmentID = &departmentID.Int64

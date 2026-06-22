@@ -5,6 +5,7 @@ import { RoleGuard } from "../components/RoleGuard";
 import { AppLayout } from "../layouts/AppLayout";
 import { BookingRulesPage } from "../pages/BookingRulesPage";
 import { BookingsPage } from "../pages/BookingsPage";
+import { ChangePasswordPage } from "../pages/ChangePasswordPage";
 import { DashboardPage } from "../pages/DashboardPage";
 import { ForbiddenPage } from "../pages/ForbiddenPage";
 import { LoginPage } from "../pages/LoginPage";
@@ -22,6 +23,7 @@ export function AppRouter(): JSX.Element {
         <Route element={<AppLayout />}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/profile/change-password" element={<ChangePasswordPage />} />
           <Route path="/resources" element={<ResourcesPage />} />
           <Route path="/resources/:id" element={<ResourceDetailsPage />} />
           <Route path="/my-bookings" element={<MyBookingsPage />} />

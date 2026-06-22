@@ -27,7 +27,7 @@ import (
 	"resourceflow/backend/internal/service"
 )
 
-const expectedMigrationVersion int64 = 9
+const expectedMigrationVersion int64 = 10
 
 func main() {
 	// Local development convenience: load env from .env if present.

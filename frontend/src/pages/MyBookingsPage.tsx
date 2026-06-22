@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { cancelBooking, completeBooking, listMyBookings } from "../api/bookings";
+import { cancelBooking, listMyBookings } from "../api/bookings";
 import { ApiError } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
@@ -11,7 +11,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import type { Booking, BookingStatus } from "../types/bookings";
 import { formatUtcDateTime } from "../utils/datetime";
 
-type BookingAction = "cancel" | "complete";
+type BookingAction = "cancel";
 type StatusFilter = "all" | BookingStatus;
 
 interface BookingFilters {
@@ -24,20 +24,23 @@ const defaultFilters: BookingFilters = {
   status: "all",
 };
 
-function canCancelBooking(status: BookingStatus): boolean {
-  return status === "pending" || status === "confirmed";
-}
-
-function canCompleteBooking(status: BookingStatus): boolean {
-  return status === "confirmed";
+function canCancelBooking(status: BookingStatus, endAt: string): boolean {
+  return (status === "pending" || status === "confirmed") && new Date(endAt).getTime() > Date.now();
 }
 
 function mapActionError(error: ApiError, t: ReturnType<typeof useTranslation>["t"]): string {
-  if (error.code === "booking_too_early_to_complete") {
-    return t("pages.myBookings.actions.tooEarlyToComplete");
+  switch (error.code) {
+    case "booking_forbidden":
+      return t("pages.myBookings.actions.errors.forbidden");
+    case "booking_cancel_not_allowed":
+      return t("pages.myBookings.actions.errors.invalidTransition");
+    case "booking_already_ended":
+      return t("pages.myBookings.actions.errors.alreadyEnded");
+    case "not_found":
+      return t("pages.myBookings.actions.errors.notFound");
+    default:
+      return error.message;
   }
-
-  return error.message;
 }
 
 export function MyBookingsPage(): JSX.Element {
@@ -68,11 +71,11 @@ export function MyBookingsPage(): JSX.Element {
     }
   }
 
-  async function handleBookingAction(booking: Booking, action: BookingAction): Promise<void> {
-    const confirmationMessage =
-      action === "cancel"
-        ? t("pages.myBookings.confirmations.cancel", { resourceName: booking.resource_name })
-        : t("pages.myBookings.confirmations.complete", { resourceName: booking.resource_name });
+  async function handleBookingAction(booking: Booking): Promise<void> {
+    const confirmationMessage = t("pages.myBookings.confirmations.cancelPrompt", {
+      resourceName: booking.resource_name,
+      defaultValue: `Cancel the booking for "${booking.resource_name}"?`,
+    });
 
     if (!window.confirm(confirmationMessage)) {
       return;
@@ -80,15 +83,10 @@ export function MyBookingsPage(): JSX.Element {
 
     setActionError(null);
     setPendingActionId(booking.id);
-    setPendingActionType(action);
+    setPendingActionType("cancel");
 
     try {
-      if (action === "cancel") {
-        await cancelBooking(booking.id);
-      } else {
-        await completeBooking(booking.id);
-      }
-
+      await cancelBooking(booking.id);
       await loadBookings();
     } catch (actionRequestError) {
       if (actionRequestError instanceof ApiError) {
@@ -96,7 +94,7 @@ export function MyBookingsPage(): JSX.Element {
       } else if (actionRequestError instanceof Error) {
         setActionError(actionRequestError.message);
       } else {
-        setActionError(t("pages.myBookings.actions.error"));
+        setActionError(t("pages.myBookings.actions.errors.generic"));
       }
     } finally {
       setPendingActionId(null);
@@ -237,29 +235,16 @@ export function MyBookingsPage(): JSX.Element {
                   </dl>
 
                   <div className="booking-card__actions">
-                    {canCancelBooking(booking.status) ? (
+                    {canCancelBooking(booking.status, booking.end_at) ? (
                       <button
                         type="button"
                         className="btn btn-secondary"
                         disabled={pendingActionId === booking.id}
-                        onClick={() => void handleBookingAction(booking, "cancel")}
+                        onClick={() => void handleBookingAction(booking)}
                       >
                         {isActionPending(booking.id, "cancel")
                           ? t("pages.myBookings.actions.processing")
                           : t("pages.myBookings.actions.cancel")}
-                      </button>
-                    ) : null}
-
-                    {canCompleteBooking(booking.status) ? (
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        disabled={pendingActionId === booking.id}
-                        onClick={() => void handleBookingAction(booking, "complete")}
-                      >
-                        {isActionPending(booking.id, "complete")
-                          ? t("pages.myBookings.actions.processing")
-                          : t("pages.myBookings.actions.complete")}
                       </button>
                     ) : null}
                   </div>

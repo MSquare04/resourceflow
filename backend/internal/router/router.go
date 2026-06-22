@@ -28,6 +28,7 @@ func Register(e *echo.Echo, deps Dependencies) {
 	authGroup := api.Group("/auth")
 	authGroup.POST("/login", deps.AuthHandler.Login)
 	authGroup.GET("/me", deps.AuthHandler.Me, deps.AuthMiddleware.RequireAuth)
+	authGroup.POST("/change-password", deps.AuthHandler.ChangePassword, deps.AuthMiddleware.RequireAuth)
 
 	authorizedGroup := api.Group("", deps.AuthMiddleware.RequireAuth)
 	adminGroup := authorizedGroup.Group("", rfmiddleware.RequireRoles("admin"))
@@ -70,12 +71,13 @@ func Register(e *echo.Echo, deps Dependencies) {
 	authorizedGroup.GET("/booking-rules", deps.BookingRuleHandler.List)
 	authorizedGroup.GET("/booking-rules/:id", deps.BookingRuleHandler.GetByID)
 
+	managerGroup := authorizedGroup.Group("", rfmiddleware.RequireRoles("admin", "manager"))
 	authorizedGroup.POST("/bookings", deps.BookingHandler.Create)
-	authorizedGroup.GET("/bookings", deps.BookingHandler.List)
+	managerGroup.GET("/bookings", deps.BookingHandler.List)
 	authorizedGroup.GET("/bookings/:id", deps.BookingHandler.GetByID)
 	authorizedGroup.GET("/my/bookings", deps.BookingHandler.MyList)
 	authorizedGroup.POST("/bookings/:id/cancel", deps.BookingHandler.Cancel)
-	authorizedGroup.POST("/bookings/:id/approve", deps.BookingHandler.Approve)
-	authorizedGroup.POST("/bookings/:id/reject", deps.BookingHandler.Reject)
+	managerGroup.POST("/bookings/:id/approve", deps.BookingHandler.Approve)
+	managerGroup.POST("/bookings/:id/reject", deps.BookingHandler.Reject)
 	authorizedGroup.POST("/bookings/:id/complete", deps.BookingHandler.Complete)
 }

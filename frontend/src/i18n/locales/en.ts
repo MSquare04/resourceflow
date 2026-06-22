@@ -23,6 +23,7 @@ export const en = {
     signInSubtitle: "Sign in to continue",
     emailPlaceholder: "you@company.com",
     passwordPlaceholder: "Enter password",
+    passwordChangedSuccess: "Password changed. Sign in with the new password.",
     signIn: "Sign in",
     signingIn: "Signing in...",
     unexpectedLoginError: "Unable to sign in",
@@ -315,13 +316,17 @@ export const en = {
         allStatuses: "All statuses",
         reset: "Reset filters",
       },
-        actions: {
-          cancel: "Cancel",
-          complete: "Complete",
-          processing: "Processing...",
-          error: "Unable to process the booking action",
-          tooEarlyToComplete: "The booking can only be completed after its end time",
+      actions: {
+        cancel: "Cancel",
+        processing: "Processing...",
+        errors: {
+          generic: "Unable to process the booking action",
+          invalidTransition: "Cancellation is not available for this status",
+          notFound: "Booking not found",
+          forbidden: "You do not have permission to cancel this booking",
+          alreadyEnded: "The booking cannot be cancelled after its end time",
         },
+      },
       confirmations: {
         cancel: "Cancel the booking for “{{resourceName}}”?",
         complete: "Complete the booking for “{{resourceName}}”?",
@@ -363,15 +368,16 @@ export const en = {
       actions: {
         approve: "Approve",
         reject: "Reject",
-        complete: "Complete",
+        cancel: "Cancel",
         processing: "Processing...",
-          errors: {
-            generic: "Unable to process the booking action",
-            invalidTransition: "The booking status transition is not available",
-            notFound: "Booking not found",
-            tooEarlyToComplete: "The booking can only be completed after its end time",
-          },
+        errors: {
+          generic: "Unable to process the booking action",
+          invalidTransition: "Cancellation is not available for this status",
+          notFound: "Booking not found",
+          forbidden: "You do not have permission to modify this booking",
+          alreadyEnded: "The booking cannot be cancelled after its end time",
         },
+      },
       confirmations: {
         approve: "Approve the booking for “{{resourceName}}”?",
         reject: "Reject the booking for “{{resourceName}}”?",
@@ -545,6 +551,26 @@ export const en = {
       noResults: {
         title: "No matching rules",
         description: "Try changing the search or filters.",
+      },
+    },
+    changePassword: {
+      title: "Change password",
+      submit: "Save new password",
+      submitting: "Saving...",
+      fields: {
+        currentPassword: "Current password",
+        newPassword: "New password",
+        confirmPassword: "Confirm new password",
+      },
+      errors: {
+        generic: "Unable to change the password",
+        currentPasswordRequired: "Enter the current password",
+        newPasswordRequired: "Enter the new password",
+        confirmPasswordRequired: "Confirm the new password",
+        confirmPasswordMismatch: "Password confirmation does not match",
+        currentPasswordInvalid: "The current password is incorrect",
+        sameAsCurrent: "The new password must be different from the current password",
+        passwordPolicyViolation: "The password does not meet the required policy",
       },
     },
     forbidden: {

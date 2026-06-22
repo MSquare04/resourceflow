@@ -85,6 +85,15 @@ func (m *AuthMiddleware) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc {
 				},
 			})
 		}
+		if claims.AuthVersion != user.AuthVersion {
+			return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{
+				Success: false,
+				Error: dto.APIError{
+					Code:    dto.ErrorCodeUnauthorized,
+					Message: "session is no longer valid",
+				},
+			})
+		}
 
 		roles, err := m.users.ListRolesByUserID(c.Request().Context(), user.ID)
 		if err != nil {

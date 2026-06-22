@@ -1,4 +1,4 @@
-import type { CurrentUserResponse, LoginResponse } from "../types/auth";
+import type { ChangePasswordPayload, CurrentUserResponse, LoginResponse } from "../types/auth";
 import { apiRequest } from "./client";
 
 interface LoginPayload {
@@ -16,4 +16,11 @@ export function login(payload: LoginPayload): Promise<LoginResponse> {
 
 export function getCurrentUser(): Promise<CurrentUserResponse> {
   return apiRequest<CurrentUserResponse>("/auth/me");
+}
+
+export async function changePassword(payload: ChangePasswordPayload): Promise<void> {
+  await apiRequest<Record<string, never>>("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }

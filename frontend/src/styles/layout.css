@@ -66,6 +66,7 @@
 .sidebar-toggle:focus-visible,
 .menu-link:focus-visible,
 .avatar-button:focus-visible,
+.profile-dropdown__action:focus-visible,
 .profile-dropdown__logout:focus-visible,
 .language-switcher__button:focus-visible {
   outline: 2px solid rgba(11, 114, 133, 0.35);
@@ -312,7 +313,29 @@
 }
 
 .profile-dropdown__language {
+  display: grid;
+  gap: 0.75rem;
   padding-top: 0.1rem;
+}
+
+.profile-dropdown__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.04);
+  color: var(--text);
+  padding: 0.8rem 0.9rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.profile-dropdown__action:hover {
+  background: rgba(15, 23, 42, 0.08);
 }
 
 .language-switcher-row {
@@ -343,6 +366,11 @@
   font-weight: 600;
   cursor: pointer;
   transition: background-color 0.2s ease;
+}
+
+.profile-dropdown__divider {
+  height: 1px;
+  background: var(--border);
 }
 
 .profile-dropdown__logout:hover {
