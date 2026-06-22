@@ -1182,17 +1182,31 @@
 
 .booking-rule-toggle-field {
   display: grid;
-  align-content: center;
-  gap: 0.45rem;
+  grid-template-rows: min-content auto min-content;
+  align-content: start;
+  align-items: start;
+  gap: 0.65rem;
   min-width: 0;
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.72);
+}
+
+.booking-rule-toggle-field__content {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.booking-rule-toggle-field__label {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 .booking-rule-toggle-field .toggle-switch {
   align-items: center;
+}
+
+.booking-rule-toggle-field .toggle-switch__label {
+  display: none;
 }
 
 .booking-rule-toggle-field__hint {

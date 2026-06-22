@@ -433,6 +433,12 @@ export function BookingRulesPage(): JSX.Element {
 
           <div className="booking-rule-toggle-grid">
             <div className="booking-rule-toggle-field">
+              <div className="booking-rule-toggle-field__content">
+                <p className="booking-rule-toggle-field__label">{t("pages.bookingRules.form.fields.requiresApproval")}</p>
+                <p className="muted booking-rule-toggle-field__hint">
+                  {t("pages.bookingRules.form.fields.requiresApprovalHint")}
+                </p>
+              </div>
               <ToggleSwitch
                 checked={formState.requiresApproval}
                 label={t("pages.bookingRules.form.fields.requiresApproval")}
@@ -441,14 +447,17 @@ export function BookingRulesPage(): JSX.Element {
             </div>
 
             <div className="booking-rule-toggle-field">
+              <div className="booking-rule-toggle-field__content">
+                <p className="booking-rule-toggle-field__label">{t("pages.bookingRules.form.fields.isActive")}</p>
+                <p className="muted booking-rule-toggle-field__hint">
+                  {t("pages.bookingRules.form.fields.isActiveHint")}
+                </p>
+              </div>
               <ToggleSwitch
                 checked={formState.isActive}
                 label={t("pages.bookingRules.form.fields.isActive")}
                 onChange={(checked) => setFormState((current) => ({ ...current, isActive: checked }))}
               />
-              <p className="muted booking-rule-toggle-field__hint">
-                {t("pages.bookingRules.form.fields.isActiveHint")}
-              </p>
             </div>
           </div>
 
