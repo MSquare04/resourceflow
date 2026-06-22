@@ -10,6 +10,10 @@ function getCurrentLocale(): string {
   return "ru-RU";
 }
 
+export function getCurrentDateTimeLocale(): string {
+  return getCurrentLocale();
+}
+
 export function formatUtcDateTime(utcDateTime: string, locale?: string): string {
   const value = new Date(utcDateTime);
   if (Number.isNaN(value.getTime())) {
@@ -20,4 +24,16 @@ export function formatUtcDateTime(utcDateTime: string, locale?: string): string 
     dateStyle: "medium",
     timeStyle: "short",
   }).format(value);
+}
+
+export function formatLocalDate(date: Date, locale?: string): string {
+  return new Intl.DateTimeFormat(locale ?? getCurrentLocale(), {
+    dateStyle: "medium",
+  }).format(date);
+}
+
+export function formatLocalTime(date: Date, locale?: string): string {
+  return new Intl.DateTimeFormat(locale ?? getCurrentLocale(), {
+    timeStyle: "short",
+  }).format(date);
 }

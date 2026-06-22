@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/labstack/echo/v5"
 
@@ -113,11 +114,23 @@ func (h *ResourceHandler) ListBusyIntervals(c *echo.Context) error {
 		return validationError(c, "invalid resource id")
 	}
 
-	intervals, err := h.bookings.ListBusyIntervalsByResourceID(c.Request().Context(), id)
+	from, err := parseOptionalRFC3339Query(c, "from")
+	if err != nil {
+		return validationError(c, "invalid busy interval range")
+	}
+
+	to, err := parseOptionalRFC3339Query(c, "to")
+	if err != nil {
+		return validationError(c, "invalid busy interval range")
+	}
+
+	intervals, err := h.bookings.ListBusyIntervalsByResourceIDInRange(c.Request().Context(), id, from, to)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrValidation):
 			return validationError(c, "invalid resource id")
+		case errors.Is(err, service.ErrBusyIntervalRangeInvalid):
+			return validationError(c, "invalid busy interval range")
 		case errors.Is(err, service.ErrResourceNotFound):
 			return notFoundError(c, "resource not found")
 		default:
@@ -129,4 +142,21 @@ func (h *ResourceHandler) ListBusyIntervals(c *echo.Context) error {
 		Success: true,
 		Data:    intervals,
 	})
+}
+
+func parseOptionalRFC3339Query(c *echo.Context, name string) (*time.Time, error) {
+	value := c.QueryParam(name)
+	if value == "" {
+		return nil, nil
+	}
+
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
+		parsed, err := time.Parse(layout, value)
+		if err == nil {
+			utc := parsed.UTC()
+			return &utc, nil
+		}
+	}
+
+	return nil, errors.New("invalid RFC3339 query value")
 }

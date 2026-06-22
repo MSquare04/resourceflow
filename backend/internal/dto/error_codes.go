@@ -12,6 +12,8 @@ const (
 	ErrorCodeBookingForbidden          = "booking_forbidden"
 	ErrorCodeBookingAlreadyEnded       = "booking_already_ended"
 	ErrorCodeBookingCancelNotAllowed   = "booking_cancel_not_allowed"
+	ErrorCodeBookingOutsideWorkday     = "booking_outside_workday"
+	ErrorCodeBookingInUnavailability   = "booking_in_unavailability"
 	ErrorCodeNotFound                  = "not_found"
 	ErrorCodeConflict                  = "conflict"
 	ErrorCodeInternal                  = "internal_error"

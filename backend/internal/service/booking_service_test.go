@@ -103,7 +103,7 @@ func TestBookingService_Create_StatusByRequiresApproval(t *testing.T) {
 func TestBookingService_Create_Errors(t *testing.T) {
 	t.Parallel()
 
-	now := time.Now().UTC().Truncate(time.Second)
+	now := time.Date(2026, time.June, 22, 12, 0, 0, 0, time.UTC)
 
 	baseReq := dto.CreateBookingRequest{
 		ResourceID: 10,
@@ -150,22 +150,39 @@ func TestBookingService_Create_Errors(t *testing.T) {
 		}
 	})
 
-	t.Run("outside availability returns error", func(t *testing.T) {
+	t.Run("outside workday returns error", func(t *testing.T) {
 		bookings := &bookingRepoMock{
-			isCoveredFn: func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) { return false, nil },
+			countByStatusesFn: func(ctx context.Context, userID int64, statuses []string) (int64, error) { return 0, nil },
 		}
-		rules := &bookingRuleRepoMock{}
+		rules := &bookingRuleRepoMock{
+			findActiveByResourceTypeIDFn: func(ctx context.Context, resourceTypeID int64) (model.BookingRule, error) {
+				workdayStart, _ := time.Parse("15:04", "09:00")
+				workdayEnd, _ := time.Parse("15:04", "18:00")
+				return model.BookingRule{
+					ResourceTypeID:           resourceTypeID,
+					MinDurationMinutes:       10,
+					MaxDurationMinutes:       240,
+					MaxActiveBookingsPerUser: 3,
+					BookingHorizonDays:       30,
+					WorkdayStart:             workdayStart,
+					WorkdayEnd:               workdayEnd,
+					IsActive:                 true,
+				}, nil
+			},
+		}
 		svc := service.NewBookingService(bookings, baseResource, baseUsers, rules)
+		req := baseReq
+		req.StartAt = time.Date(now.Year(), now.Month(), now.Day()+1, 8, 0, 0, 0, time.UTC)
+		req.EndAt = req.StartAt.Add(time.Hour)
 
-		_, err := svc.CreateAt(context.Background(), 55, baseReq, now)
-		if !errors.Is(err, service.ErrBookingOutOfAvailability) {
-			t.Fatalf("expected ErrBookingOutOfAvailability, got %v", err)
+		_, err := svc.CreateAt(context.Background(), 55, req, now)
+		if !errors.Is(err, service.ErrBookingOutsideWorkday) {
+			t.Fatalf("expected ErrBookingOutsideWorkday, got %v", err)
 		}
 	})
 
-	t.Run("booking without availability is allowed", func(t *testing.T) {
+	t.Run("booking without unavailability is allowed", func(t *testing.T) {
 		bookings := &bookingRepoMock{
-			isCoveredFn: func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) { return true, nil },
 			countByStatusesFn: func(ctx context.Context, userID int64, statuses []string) (int64, error) {
 				return 0, nil
 			},
@@ -269,18 +286,17 @@ func TestBookingService_Create_CoreInvariants(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		req      dto.CreateBookingRequest
-		resource model.Resource
-		covered  bool
-		conflict bool
-		wantErr  error
+		name              string
+		req               dto.CreateBookingRequest
+		resource          model.Resource
+		conflict          bool
+		hasUnavailability bool
+		wantErr           error
 	}{
 		{
 			name:     "success",
 			req:      baseReq,
 			resource: model.Resource{ID: 10, TypeID: 20, IsActive: true, IsBookable: true},
-			covered:  true,
 		},
 		{
 			name:     "start in past",
@@ -289,17 +305,16 @@ func TestBookingService_Create_CoreInvariants(t *testing.T) {
 			wantErr:  service.ErrBookingStartNotFuture,
 		},
 		{
-			name:     "outside availability",
-			req:      baseReq,
-			resource: model.Resource{ID: 10, TypeID: 20, IsActive: true, IsBookable: true},
-			covered:  false,
-			wantErr:  service.ErrBookingOutOfAvailability,
+			name:              "resource unavailability conflict",
+			req:               baseReq,
+			resource:          model.Resource{ID: 10, TypeID: 20, IsActive: true, IsBookable: true},
+			hasUnavailability: true,
+			wantErr:           service.ErrBookingInUnavailability,
 		},
 		{
 			name:     "conflict with active booking",
 			req:      baseReq,
 			resource: model.Resource{ID: 10, TypeID: 20, IsActive: true, IsBookable: true},
-			covered:  true,
 			conflict: true,
 			wantErr:  service.ErrBookingConflict,
 		},
@@ -317,9 +332,6 @@ func TestBookingService_Create_CoreInvariants(t *testing.T) {
 			t.Parallel()
 
 			bookings := &bookingRepoMock{
-				isCoveredFn: func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) {
-					return tc.covered, nil
-				},
 				countByStatusesFn: func(ctx context.Context, userID int64, statuses []string) (int64, error) {
 					return 0, nil
 				},
@@ -345,13 +357,209 @@ func TestBookingService_Create_CoreInvariants(t *testing.T) {
 				},
 			}
 
-			svc := service.NewBookingService(bookings, resources, baseUsers, baseRule)
+			svc := service.NewBookingService(bookings, resources, baseUsers, baseRule).WithUnavailabilityChecker(&unavailabilityCheckerMock{
+				hasConflictFn: func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) {
+					return tc.hasUnavailability, nil
+				},
+			})
 			_, err := svc.CreateAt(context.Background(), 55, tc.req, now)
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("expected %v, got %v", tc.wantErr, err)
 			}
 		})
 	}
+}
+
+func TestBookingService_CreateAt_WorkdayAndUnavailabilityRules(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.June, 22, 8, 0, 0, 0, time.UTC)
+	workdayStart, _ := time.Parse("15:04", "09:00")
+	workdayEnd, _ := time.Parse("15:04", "18:00")
+
+	newService := func(
+		t *testing.T,
+		checker func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error),
+	) *service.BookingService {
+		t.Helper()
+
+		bookings := &bookingRepoMock{
+			countByStatusesFn: func(ctx context.Context, userID int64, statuses []string) (int64, error) {
+				return 0, nil
+			},
+			hasConflictFn: func(ctx context.Context, resourceID int64, startAt, endAt time.Time, statuses []string) (bool, error) {
+				return false, nil
+			},
+			createFn: func(ctx context.Context, params repository.CreateBookingParams) (model.Booking, error) {
+				return model.Booking{
+					ID:         1,
+					ResourceID: params.ResourceID,
+					UserID:     params.UserID,
+					StartAt:    params.StartAt,
+					EndAt:      params.EndAt,
+					Status:     params.Status,
+					CreatedAt:  now,
+					UpdatedAt:  now,
+				}, nil
+			},
+		}
+		resources := &resourceRepoMock{
+			findByIDFn: func(ctx context.Context, id int64) (model.Resource, error) {
+				return model.Resource{ID: id, TypeID: 20, IsActive: true, IsBookable: true}, nil
+			},
+		}
+		users := &userRepoMock{
+			findByIDFn: func(ctx context.Context, id int64) (model.User, error) {
+				return model.User{ID: id, IsActive: true}, nil
+			},
+		}
+		rules := &bookingRuleRepoMock{
+			findActiveByResourceTypeIDFn: func(ctx context.Context, resourceTypeID int64) (model.BookingRule, error) {
+				return model.BookingRule{
+					ResourceTypeID:           resourceTypeID,
+					MinDurationMinutes:       60,
+					MaxDurationMinutes:       180,
+					MaxActiveBookingsPerUser: 3,
+					BookingHorizonDays:       30,
+					WorkdayStart:             workdayStart,
+					WorkdayEnd:               workdayEnd,
+					IsActive:                 true,
+				}, nil
+			},
+		}
+
+		return service.NewBookingService(bookings, resources, users, rules).WithUnavailabilityChecker(&unavailabilityCheckerMock{
+			hasConflictFn: checker,
+		})
+	}
+
+	tests := []struct {
+		name    string
+		req     dto.CreateBookingRequest
+		checker func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error)
+		wantErr error
+	}{
+		{
+			name: "inside workday is allowed",
+			req: dto.CreateBookingRequest{
+				ResourceID: 10,
+				StartAt:    time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC),
+				EndAt:      time.Date(2026, time.June, 22, 11, 0, 0, 0, time.UTC),
+			},
+		},
+		{
+			name: "before workday start is rejected",
+			req: dto.CreateBookingRequest{
+				ResourceID: 10,
+				StartAt:    time.Date(2026, time.June, 22, 8, 30, 0, 0, time.UTC),
+				EndAt:      time.Date(2026, time.June, 22, 9, 30, 0, 0, time.UTC),
+			},
+			wantErr: service.ErrBookingOutsideWorkday,
+		},
+		{
+			name: "after workday end is rejected",
+			req: dto.CreateBookingRequest{
+				ResourceID: 10,
+				StartAt:    time.Date(2026, time.June, 22, 17, 30, 0, 0, time.UTC),
+				EndAt:      time.Date(2026, time.June, 22, 18, 30, 0, 0, time.UTC),
+			},
+			wantErr: service.ErrBookingOutsideWorkday,
+		},
+		{
+			name: "technical interval overlap is rejected",
+			req: dto.CreateBookingRequest{
+				ResourceID: 10,
+				StartAt:    time.Date(2026, time.June, 22, 13, 30, 0, 0, time.UTC),
+				EndAt:      time.Date(2026, time.June, 22, 14, 30, 0, 0, time.UTC),
+			},
+			checker: func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) {
+				return true, nil
+			},
+			wantErr: service.ErrBookingInUnavailability,
+		},
+		{
+			name: "adjacent ranges are allowed",
+			req: dto.CreateBookingRequest{
+				ResourceID: 10,
+				StartAt:    time.Date(2026, time.June, 22, 15, 0, 0, 0, time.UTC),
+				EndAt:      time.Date(2026, time.June, 22, 16, 0, 0, 0, time.UTC),
+			},
+			checker: func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) {
+				return false, nil
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc := newService(t, tc.checker)
+			_, err := svc.CreateAt(context.Background(), 77, tc.req, now)
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("expected %v, got %v", tc.wantErr, err)
+			}
+		})
+	}
+
+	t.Run("unrestricted time ignores workday bounds", func(t *testing.T) {
+		t.Parallel()
+
+		bookings := &bookingRepoMock{
+			countByStatusesFn: func(ctx context.Context, userID int64, statuses []string) (int64, error) { return 0, nil },
+			hasConflictFn: func(ctx context.Context, resourceID int64, startAt, endAt time.Time, statuses []string) (bool, error) {
+				return false, nil
+			},
+			createFn: func(ctx context.Context, params repository.CreateBookingParams) (model.Booking, error) {
+				return model.Booking{
+					ID:         2,
+					ResourceID: params.ResourceID,
+					UserID:     params.UserID,
+					StartAt:    params.StartAt,
+					EndAt:      params.EndAt,
+					Status:     params.Status,
+					CreatedAt:  now,
+					UpdatedAt:  now,
+				}, nil
+			},
+		}
+		resources := &resourceRepoMock{
+			findByIDFn: func(ctx context.Context, id int64) (model.Resource, error) {
+				return model.Resource{ID: id, TypeID: 20, IsActive: true, IsBookable: true}, nil
+			},
+		}
+		users := &userRepoMock{
+			findByIDFn: func(ctx context.Context, id int64) (model.User, error) {
+				return model.User{ID: id, IsActive: true}, nil
+			},
+		}
+		rules := &bookingRuleRepoMock{
+			findActiveByResourceTypeIDFn: func(ctx context.Context, resourceTypeID int64) (model.BookingRule, error) {
+				return model.BookingRule{
+					ResourceTypeID:           resourceTypeID,
+					MinDurationMinutes:       60,
+					MaxDurationMinutes:       180,
+					MaxActiveBookingsPerUser: 3,
+					BookingHorizonDays:       30,
+					WorkdayStart:             workdayStart,
+					WorkdayEnd:               workdayEnd,
+					UnrestrictedTime:         true,
+					IsActive:                 true,
+				}, nil
+			},
+		}
+
+		svc := service.NewBookingService(bookings, resources, users, rules)
+		_, err := svc.CreateAt(context.Background(), 77, dto.CreateBookingRequest{
+			ResourceID: 10,
+			StartAt:    time.Date(2026, time.June, 22, 8, 0, 0, 0, time.UTC),
+			EndAt:      time.Date(2026, time.June, 22, 9, 0, 0, 0, time.UTC),
+		}, now)
+		if err != nil {
+			t.Fatalf("expected unrestricted booking to succeed, got %v", err)
+		}
+	})
 }
 
 func TestBookingService_CreateAt_CurrentMinuteSemantics(t *testing.T) {
@@ -466,9 +674,7 @@ func TestBookingService_CreateAt_CurrentMinuteSemantics(t *testing.T) {
 		t.Parallel()
 
 		bookings := &bookingRepoMock{
-			isCoveredFn: func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) {
-				return false, nil
-			},
+			countByStatusesFn: func(ctx context.Context, userID int64, statuses []string) (int64, error) { return 0, nil },
 		}
 		resources := &resourceRepoMock{
 			findByIDFn: func(ctx context.Context, id int64) (model.Resource, error) {
@@ -493,7 +699,11 @@ func TestBookingService_CreateAt_CurrentMinuteSemantics(t *testing.T) {
 			},
 		}
 
-		svc := service.NewBookingService(bookings, resources, users, rules)
+		svc := service.NewBookingService(bookings, resources, users, rules).WithUnavailabilityChecker(&unavailabilityCheckerMock{
+			hasConflictFn: func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) {
+				return true, nil
+			},
+		})
 		req := dto.CreateBookingRequest{
 			ResourceID: 10,
 			StartAt:    currentMinute,
@@ -501,8 +711,8 @@ func TestBookingService_CreateAt_CurrentMinuteSemantics(t *testing.T) {
 		}
 
 		_, err := svc.CreateAt(context.Background(), 55, req, now)
-		if !errors.Is(err, service.ErrBookingOutOfAvailability) {
-			t.Fatalf("expected ErrBookingOutOfAvailability, got %v", err)
+		if !errors.Is(err, service.ErrBookingInUnavailability) {
+			t.Fatalf("expected ErrBookingInUnavailability, got %v", err)
 		}
 	})
 }
@@ -546,6 +756,88 @@ func TestBookingService_ListBusyIntervalsByResourceID(t *testing.T) {
 	if !got[0].StartAt.Equal(now.Add(3*time.Hour)) || !got[1].EndAt.Equal(now.Add(7*time.Hour)) {
 		t.Fatalf("unexpected intervals payload: %#v", got)
 	}
+}
+
+func TestBookingService_ListBusyIntervalsByResourceIDInRange(t *testing.T) {
+	t.Parallel()
+
+	from := time.Date(2026, time.June, 22, 0, 0, 0, 0, time.UTC)
+	to := from.Add(24 * time.Hour)
+
+	t.Run("passes explicit range and preserves overlapping intervals", func(t *testing.T) {
+		bookings := &bookingRepoMock{
+			listBusyFn: func(ctx context.Context, resourceID int64, statuses []string, gotFrom, gotTo time.Time) ([]model.Booking, error) {
+				if resourceID != 10 {
+					t.Fatalf("unexpected resource id: %d", resourceID)
+				}
+				if !gotFrom.Equal(from) || !gotTo.Equal(to) {
+					t.Fatalf("unexpected range: %s..%s", gotFrom, gotTo)
+				}
+
+				return []model.Booking{
+					{StartAt: from.Add(-time.Hour), EndAt: from.Add(time.Hour)},
+					{StartAt: to.Add(-time.Hour), EndAt: to.Add(time.Hour)},
+				}, nil
+			},
+		}
+		resources := &resourceRepoMock{
+			findByIDFn: func(ctx context.Context, id int64) (model.Resource, error) {
+				return model.Resource{ID: id, Name: "Room 1"}, nil
+			},
+		}
+
+		svc := service.NewBookingService(bookings, resources, &userRepoMock{}, &bookingRuleRepoMock{})
+		got, err := svc.ListBusyIntervalsByResourceIDInRange(context.Background(), 10, &from, &to)
+		if err != nil {
+			t.Fatalf("ListBusyIntervalsByResourceIDInRange returned error: %v", err)
+		}
+		if len(got) != 2 {
+			t.Fatalf("unexpected intervals count: got %d want 2", len(got))
+		}
+		if !got[0].StartAt.Equal(from.Add(-time.Hour)) || !got[1].EndAt.Equal(to.Add(time.Hour)) {
+			t.Fatalf("unexpected intervals payload: %#v", got)
+		}
+	})
+
+	t.Run("rejects incomplete range", func(t *testing.T) {
+		resources := &resourceRepoMock{
+			findByIDFn: func(ctx context.Context, id int64) (model.Resource, error) {
+				return model.Resource{ID: id, Name: "Room 1"}, nil
+			},
+		}
+		svc := service.NewBookingService(&bookingRepoMock{}, resources, &userRepoMock{}, &bookingRuleRepoMock{})
+		_, err := svc.ListBusyIntervalsByResourceIDInRange(context.Background(), 10, &from, nil)
+		if !errors.Is(err, service.ErrBusyIntervalRangeInvalid) {
+			t.Fatalf("expected ErrBusyIntervalRangeInvalid, got %v", err)
+		}
+	})
+
+	t.Run("rejects non-positive range", func(t *testing.T) {
+		resources := &resourceRepoMock{
+			findByIDFn: func(ctx context.Context, id int64) (model.Resource, error) {
+				return model.Resource{ID: id, Name: "Room 1"}, nil
+			},
+		}
+		svc := service.NewBookingService(&bookingRepoMock{}, resources, &userRepoMock{}, &bookingRuleRepoMock{})
+		_, err := svc.ListBusyIntervalsByResourceIDInRange(context.Background(), 10, &to, &from)
+		if !errors.Is(err, service.ErrBusyIntervalRangeInvalid) {
+			t.Fatalf("expected ErrBusyIntervalRangeInvalid, got %v", err)
+		}
+	})
+
+	t.Run("rejects range longer than 31 days", func(t *testing.T) {
+		longTo := from.Add(31*24*time.Hour + time.Minute)
+		resources := &resourceRepoMock{
+			findByIDFn: func(ctx context.Context, id int64) (model.Resource, error) {
+				return model.Resource{ID: id, Name: "Room 1"}, nil
+			},
+		}
+		svc := service.NewBookingService(&bookingRepoMock{}, resources, &userRepoMock{}, &bookingRuleRepoMock{})
+		_, err := svc.ListBusyIntervalsByResourceIDInRange(context.Background(), 10, &from, &longTo)
+		if !errors.Is(err, service.ErrBusyIntervalRangeInvalid) {
+			t.Fatalf("expected ErrBusyIntervalRangeInvalid, got %v", err)
+		}
+	})
 }
 
 func TestBookingService_StatusTransitions_TableDriven(t *testing.T) {
@@ -1039,8 +1331,8 @@ func TestBookingService_ProcessExpiredBookings_RemovesExpiredFromBusyIntervals(t
 	if err != nil {
 		t.Fatalf("ListBusyIntervalsByResourceID returned error: %v", err)
 	}
-	if len(busyIntervals) != 2 {
-		t.Fatalf("unexpected busy intervals count: got %d want 2", len(busyIntervals))
+	if len(busyIntervals) != 1 {
+		t.Fatalf("unexpected busy intervals count: got %d want 1", len(busyIntervals))
 	}
 	for _, interval := range busyIntervals {
 		if !interval.StartAt.After(now) {

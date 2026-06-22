@@ -8,17 +8,18 @@ import (
 )
 
 type Dependencies struct {
-	HealthHandler               *handler.HealthHandler
-	AuthHandler                 *handler.AuthHandler
-	DepartmentHandler           *handler.DepartmentHandler
-	UserHandler                 *handler.UserHandler
-	ResourceCategoryHandler     *handler.ResourceCategoryHandler
-	ResourceTypeHandler         *handler.ResourceTypeHandler
-	ResourceHandler             *handler.ResourceHandler
-	ResourceAvailabilityHandler *handler.ResourceAvailabilityHandler
-	BookingRuleHandler          *handler.BookingRuleHandler
-	BookingHandler              *handler.BookingHandler
-	AuthMiddleware              *rfmiddleware.AuthMiddleware
+	HealthHandler                 *handler.HealthHandler
+	AuthHandler                   *handler.AuthHandler
+	DepartmentHandler             *handler.DepartmentHandler
+	UserHandler                   *handler.UserHandler
+	ResourceCategoryHandler       *handler.ResourceCategoryHandler
+	ResourceTypeHandler           *handler.ResourceTypeHandler
+	ResourceHandler               *handler.ResourceHandler
+	ResourceAvailabilityHandler   *handler.ResourceAvailabilityHandler
+	ResourceUnavailabilityHandler *handler.ResourceUnavailabilityHandler
+	BookingRuleHandler            *handler.BookingRuleHandler
+	BookingHandler                *handler.BookingHandler
+	AuthMiddleware                *rfmiddleware.AuthMiddleware
 }
 
 func Register(e *echo.Echo, deps Dependencies) {
@@ -65,6 +66,12 @@ func Register(e *echo.Echo, deps Dependencies) {
 	adminGroup.DELETE("/resources/:id/availability/:availabilityId", deps.ResourceAvailabilityHandler.Delete)
 	authorizedGroup.GET("/resources/:id/availability", deps.ResourceAvailabilityHandler.ListByResourceID)
 	authorizedGroup.GET("/resources/:id/availability/:availabilityId", deps.ResourceAvailabilityHandler.GetByID)
+
+	adminGroup.POST("/resources/:id/unavailability", deps.ResourceUnavailabilityHandler.Create)
+	adminGroup.PUT("/resources/:id/unavailability/:unavailabilityId", deps.ResourceUnavailabilityHandler.Update)
+	adminGroup.DELETE("/resources/:id/unavailability/:unavailabilityId", deps.ResourceUnavailabilityHandler.Delete)
+	authorizedGroup.GET("/resources/:id/unavailability", deps.ResourceUnavailabilityHandler.ListByResourceID)
+	authorizedGroup.GET("/resources/:id/unavailability/:unavailabilityId", deps.ResourceUnavailabilityHandler.GetByID)
 
 	adminGroup.POST("/booking-rules", deps.BookingRuleHandler.Create)
 	adminGroup.PUT("/booking-rules/:id", deps.BookingRuleHandler.Update)

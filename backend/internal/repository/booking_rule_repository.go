@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"resourceflow/backend/internal/model"
 )
@@ -27,6 +28,9 @@ type CreateBookingRuleParams struct {
 	MaxActiveBookingsPerUser int32
 	RequiresApproval         bool
 	BookingHorizonDays       int32
+	WorkdayStart             time.Time
+	WorkdayEnd               time.Time
+	UnrestrictedTime         bool
 	IsActive                 bool
 }
 
@@ -37,6 +41,9 @@ type UpdateBookingRuleParams struct {
 	MaxActiveBookingsPerUser int32
 	RequiresApproval         bool
 	BookingHorizonDays       int32
+	WorkdayStart             time.Time
+	WorkdayEnd               time.Time
+	UnrestrictedTime         bool
 	IsActive                 bool
 }
 
@@ -53,9 +60,12 @@ INSERT INTO app.booking_rules (
   max_active_bookings_per_user,
   requires_approval,
   booking_horizon_days,
+  workday_start,
+  workday_end,
+  unrestricted_time,
   is_active
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING
   id,
   resource_type_id,
@@ -64,6 +74,9 @@ RETURNING
   max_active_bookings_per_user,
   requires_approval,
   booking_horizon_days,
+  workday_start,
+  workday_end,
+  unrestricted_time,
   is_active,
   created_at,
   updated_at;
@@ -79,6 +92,9 @@ RETURNING
 		params.MaxActiveBookingsPerUser,
 		params.RequiresApproval,
 		params.BookingHorizonDays,
+		params.WorkdayStart,
+		params.WorkdayEnd,
+		params.UnrestrictedTime,
 		params.IsActive,
 	).Scan(
 		&rule.ID,
@@ -88,6 +104,9 @@ RETURNING
 		&rule.MaxActiveBookingsPerUser,
 		&rule.RequiresApproval,
 		&rule.BookingHorizonDays,
+		&rule.WorkdayStart,
+		&rule.WorkdayEnd,
+		&rule.UnrestrictedTime,
 		&rule.IsActive,
 		&rule.CreatedAt,
 		&rule.UpdatedAt,
@@ -109,6 +128,9 @@ SELECT
   max_active_bookings_per_user,
   requires_approval,
   booking_horizon_days,
+  workday_start,
+  workday_end,
+  unrestricted_time,
   is_active,
   created_at,
   updated_at
@@ -133,6 +155,9 @@ ORDER BY id;
 			&rule.MaxActiveBookingsPerUser,
 			&rule.RequiresApproval,
 			&rule.BookingHorizonDays,
+			&rule.WorkdayStart,
+			&rule.WorkdayEnd,
+			&rule.UnrestrictedTime,
 			&rule.IsActive,
 			&rule.CreatedAt,
 			&rule.UpdatedAt,
@@ -159,6 +184,9 @@ SELECT
   max_active_bookings_per_user,
   requires_approval,
   booking_horizon_days,
+  workday_start,
+  workday_end,
+  unrestricted_time,
   is_active,
   created_at,
   updated_at
@@ -176,6 +204,9 @@ LIMIT 1;
 		&rule.MaxActiveBookingsPerUser,
 		&rule.RequiresApproval,
 		&rule.BookingHorizonDays,
+		&rule.WorkdayStart,
+		&rule.WorkdayEnd,
+		&rule.UnrestrictedTime,
 		&rule.IsActive,
 		&rule.CreatedAt,
 		&rule.UpdatedAt,
@@ -197,6 +228,9 @@ SELECT
   max_active_bookings_per_user,
   requires_approval,
   booking_horizon_days,
+  workday_start,
+  workday_end,
+  unrestricted_time,
   is_active,
   created_at,
   updated_at
@@ -216,6 +250,9 @@ LIMIT 1;
 		&rule.MaxActiveBookingsPerUser,
 		&rule.RequiresApproval,
 		&rule.BookingHorizonDays,
+		&rule.WorkdayStart,
+		&rule.WorkdayEnd,
+		&rule.UnrestrictedTime,
 		&rule.IsActive,
 		&rule.CreatedAt,
 		&rule.UpdatedAt,
@@ -236,7 +273,10 @@ SET resource_type_id = $2,
     max_active_bookings_per_user = $5,
     requires_approval = $6,
     booking_horizon_days = $7,
-    is_active = $8,
+    workday_start = $8,
+    workday_end = $9,
+    unrestricted_time = $10,
+    is_active = $11,
     updated_at = NOW()
 WHERE id = $1
 RETURNING
@@ -247,6 +287,9 @@ RETURNING
   max_active_bookings_per_user,
   requires_approval,
   booking_horizon_days,
+  workday_start,
+  workday_end,
+  unrestricted_time,
   is_active,
   created_at,
   updated_at;
@@ -263,6 +306,9 @@ RETURNING
 		params.MaxActiveBookingsPerUser,
 		params.RequiresApproval,
 		params.BookingHorizonDays,
+		params.WorkdayStart,
+		params.WorkdayEnd,
+		params.UnrestrictedTime,
 		params.IsActive,
 	).Scan(
 		&rule.ID,
@@ -272,6 +318,9 @@ RETURNING
 		&rule.MaxActiveBookingsPerUser,
 		&rule.RequiresApproval,
 		&rule.BookingHorizonDays,
+		&rule.WorkdayStart,
+		&rule.WorkdayEnd,
+		&rule.UnrestrictedTime,
 		&rule.IsActive,
 		&rule.CreatedAt,
 		&rule.UpdatedAt,

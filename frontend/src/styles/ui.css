@@ -642,6 +642,121 @@
   padding-right: 0.2rem;
 }
 
+.resource-day-calendar__controls {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.resource-day-calendar__quick-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.resource-day-calendar__date-field {
+  width: min(240px, 100%);
+}
+
+.resource-day-calendar__date-field input {
+  width: 100%;
+}
+
+.resource-day-calendar__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+}
+
+.resource-day-calendar__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.resource-day-calendar__legend-dot {
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+
+.resource-day-calendar__legend-dot.is-free,
+.resource-day-calendar__slot.is-free {
+  background: rgba(13, 148, 96, 0.08);
+  border-color: rgba(13, 148, 96, 0.24);
+  color: #0f766e;
+}
+
+.resource-day-calendar__legend-dot.is-selected,
+.resource-day-calendar__slot.is-selected {
+  background: rgba(11, 114, 133, 0.18);
+  border-color: rgba(11, 114, 133, 0.34);
+  color: var(--accent-strong);
+}
+
+.resource-day-calendar__legend-dot.is-busy,
+.resource-day-calendar__slot.is-busy {
+  background: rgba(220, 38, 38, 0.12);
+  border-color: rgba(220, 38, 38, 0.24);
+  color: #b91c1c;
+}
+
+.resource-day-calendar__legend-dot.is-unavailable,
+.resource-day-calendar__slot.is-unavailable {
+  background: rgba(217, 119, 6, 0.12);
+  border-color: rgba(217, 119, 6, 0.24);
+  color: #b45309;
+}
+
+.resource-day-calendar__legend-dot.is-past,
+.resource-day-calendar__slot.is-past {
+  background: rgba(100, 116, 139, 0.12);
+  border-color: rgba(100, 116, 139, 0.24);
+  color: var(--muted);
+}
+
+.resource-day-calendar {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.55rem;
+  max-height: 22rem;
+  overflow-y: auto;
+  padding-right: 0.15rem;
+}
+
+.resource-day-calendar__slot {
+  min-width: 0;
+  min-height: 2.5rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.8);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.resource-day-calendar__slot:hover:enabled {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(15, 37, 53, 0.08);
+}
+
+.resource-day-calendar__slot:focus-visible {
+  outline: 2px solid rgba(11, 114, 133, 0.35);
+  outline-offset: 2px;
+}
+
+.resource-day-calendar__slot:disabled {
+  cursor: not-allowed;
+  opacity: 0.9;
+}
+
 .busy-interval-card {
   display: grid;
   gap: 0.65rem;
@@ -1337,6 +1452,10 @@
     grid-template-columns: 1fr;
   }
 
+  .resource-day-calendar {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .users-form-grid,
   .resources-form-grid,
   .users-list,
@@ -1415,6 +1534,10 @@
   .availability-card,
   .date-time-field__grid {
     grid-template-columns: 1fr;
+  }
+
+  .resource-day-calendar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .booking-card__meta,

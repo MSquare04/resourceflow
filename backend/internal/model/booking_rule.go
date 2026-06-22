@@ -10,6 +10,9 @@ type BookingRule struct {
 	MaxActiveBookingsPerUser int32
 	RequiresApproval         bool
 	BookingHorizonDays       int32
+	WorkdayStart             time.Time
+	WorkdayEnd               time.Time
+	UnrestrictedTime         bool
 	IsActive                 bool
 	CreatedAt                time.Time
 	UpdatedAt                time.Time

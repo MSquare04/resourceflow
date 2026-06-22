@@ -34,14 +34,14 @@ type AccountSummary struct {
 }
 
 type Counts struct {
-	Departments  int
-	Users        int
-	Categories   int
-	Types        int
-	Rules        int
-	Resources    int
-	Availability int
-	Bookings     int
+	Departments    int
+	Users          int
+	Categories     int
+	Types          int
+	Rules          int
+	Resources      int
+	Unavailability int
+	Bookings       int
 }
 
 type Resetter struct {
@@ -91,6 +91,9 @@ type ruleSeed struct {
 	MaxActiveBookingsPerUser int
 	RequiresApproval         bool
 	BookingHorizonDays       int
+	WorkdayStart             string
+	WorkdayEnd               string
+	UnrestrictedTime         bool
 	IsActive                 bool
 }
 
@@ -205,7 +208,7 @@ func (r *Resetter) ResetAndSeed(ctx context.Context, appEnv, dbName, password st
 		return summary, err
 	}
 
-	if _, err := seedAvailability(ctx, tx, resources, r.now); err != nil {
+	if _, err := seedResourceUnavailability(ctx, tx, resources, r.now); err != nil {
 		return summary, err
 	}
 
@@ -230,6 +233,7 @@ func resetApplicationData(ctx context.Context, tx *sql.Tx) error {
 	const query = `
 TRUNCATE TABLE
   app.bookings,
+  app.resource_unavailability,
   app.resource_availability,
   app.booking_rules,
   app.resources,
@@ -285,7 +289,7 @@ func seedDepartments(ctx context.Context, tx *sql.Tx, now time.Time) (map[string
 		{Name: "Информационные технологии", Description: "Инфраструктура, сервисы и техническая поддержка", IsActive: true},
 		{Name: "Отдел персонала", Description: "Подбор, обучение и сопровождение сотрудников", IsActive: true},
 		{Name: "Продажи", Description: "Коммерческие встречи и клиентские демонстрации", IsActive: true},
-		{Name: "Эксплуатация", Description: "Транспорт, обслуживание помещений и оборудования", IsActive: true},
+		{Name: "Эксплуатация", Description: "Транспорт, помещения и техническое обслуживание", IsActive: true},
 	}
 
 	result := make(map[string]departmentSeed, len(seeds))
@@ -402,7 +406,7 @@ func seedResourceCategories(ctx context.Context, tx *sql.Tx, now time.Time) (map
 		{Code: "rooms", Name: "Помещения", Description: "Комнаты, залы и другие бронируемые пространства", IsActive: true},
 		{Code: "transport", Name: "Транспорт", Description: "Корпоративный транспорт для служебных поездок", IsActive: true},
 		{Code: "equipment", Name: "Оборудование", Description: "Техника и переносимые устройства", IsActive: true},
-		{Code: "workplaces", Name: "Рабочие места", Description: "Фиксированные рабочие места и зоны посадки", IsActive: true},
+		{Code: "workplaces", Name: "Рабочие места", Description: "Фиксированные рабочие места и посадочные зоны", IsActive: true},
 	}
 
 	result := make(map[string]categorySeed, len(seeds))
@@ -442,9 +446,9 @@ func seedResourceTypes(
 		isActive    bool
 	}{
 		{code: "meeting-room", category: "rooms", name: "Переговорная", description: "Небольшая комната для встреч и интервью", isActive: true},
-		{code: "conference-hall", category: "rooms", name: "Конференц-зал", description: "Большой зал для презентаций и общих собраний", isActive: true},
+		{code: "conference-hall", category: "rooms", name: "Конференц-зал", description: "Большой зал для презентаций и общих встреч", isActive: true},
 		{code: "passenger-car", category: "transport", name: "Легковой автомобиль", description: "Служебный автомобиль для поездок сотрудников", isActive: true},
-		{code: "projector", category: "equipment", name: "Проектор", description: "Переносной проектор для встреч и презентаций", isActive: true},
+		{code: "projector", category: "equipment", name: "Проектор", description: "Переносной проектор для встреч и обучения", isActive: true},
 		{code: "workspace", category: "workplaces", name: "Рабочее место", description: "Фиксированное место в офисном пространстве", isActive: true},
 	}
 
@@ -490,39 +494,18 @@ func seedBookingRules(
 	resourceTypes map[string]resourceTypeSeed,
 	now time.Time,
 ) (map[string]ruleSeed, error) {
-	seeds := []struct {
-		typeCode                 string
-		minDurationMinutes       int
-		maxDurationMinutes       int
-		maxActiveBookingsPerUser int
-		requiresApproval         bool
-		bookingHorizonDays       int
-		isActive                 bool
-	}{
-		{typeCode: "meeting-room", minDurationMinutes: 30, maxDurationMinutes: 180, maxActiveBookingsPerUser: 3, requiresApproval: false, bookingHorizonDays: 30, isActive: true},
-		{typeCode: "conference-hall", minDurationMinutes: 60, maxDurationMinutes: 480, maxActiveBookingsPerUser: 2, requiresApproval: true, bookingHorizonDays: 60, isActive: true},
-		{typeCode: "passenger-car", minDurationMinutes: 60, maxDurationMinutes: 480, maxActiveBookingsPerUser: 1, requiresApproval: true, bookingHorizonDays: 14, isActive: true},
-		{typeCode: "projector", minDurationMinutes: 30, maxDurationMinutes: 480, maxActiveBookingsPerUser: 2, requiresApproval: false, bookingHorizonDays: 30, isActive: true},
-		{typeCode: "workspace", minDurationMinutes: 60, maxDurationMinutes: 480, maxActiveBookingsPerUser: 1, requiresApproval: false, bookingHorizonDays: 14, isActive: false},
+	seeds := []ruleSeed{
+		{ResourceTypeID: resourceTypes["meeting-room"].ID, MinDurationMinutes: 30, MaxDurationMinutes: 180, MaxActiveBookingsPerUser: 3, RequiresApproval: false, BookingHorizonDays: 30, WorkdayStart: "09:00", WorkdayEnd: "18:00", UnrestrictedTime: false, IsActive: true},
+		{ResourceTypeID: resourceTypes["conference-hall"].ID, MinDurationMinutes: 60, MaxDurationMinutes: 480, MaxActiveBookingsPerUser: 2, RequiresApproval: true, BookingHorizonDays: 60, WorkdayStart: "10:00", WorkdayEnd: "19:00", UnrestrictedTime: false, IsActive: true},
+		{ResourceTypeID: resourceTypes["passenger-car"].ID, MinDurationMinutes: 60, MaxDurationMinutes: 480, MaxActiveBookingsPerUser: 1, RequiresApproval: true, BookingHorizonDays: 14, WorkdayStart: "07:00", WorkdayEnd: "22:00", UnrestrictedTime: true, IsActive: true},
+		{ResourceTypeID: resourceTypes["projector"].ID, MinDurationMinutes: 30, MaxDurationMinutes: 480, MaxActiveBookingsPerUser: 2, RequiresApproval: false, BookingHorizonDays: 30, WorkdayStart: "07:00", WorkdayEnd: "22:00", UnrestrictedTime: true, IsActive: true},
+		{ResourceTypeID: resourceTypes["workspace"].ID, MinDurationMinutes: 60, MaxDurationMinutes: 480, MaxActiveBookingsPerUser: 1, RequiresApproval: false, BookingHorizonDays: 14, WorkdayStart: "09:00", WorkdayEnd: "18:00", UnrestrictedTime: false, IsActive: false},
 	}
 
 	result := make(map[string]ruleSeed, len(seeds))
-	for _, seed := range seeds {
-		resourceType, ok := resourceTypes[seed.typeCode]
-		if !ok {
-			return nil, fmt.Errorf("resource type %q is not seeded", seed.typeCode)
-		}
-
-		rule := ruleSeed{
-			ResourceTypeID:           resourceType.ID,
-			MinDurationMinutes:       seed.minDurationMinutes,
-			MaxDurationMinutes:       seed.maxDurationMinutes,
-			MaxActiveBookingsPerUser: seed.maxActiveBookingsPerUser,
-			RequiresApproval:         seed.requiresApproval,
-			BookingHorizonDays:       seed.bookingHorizonDays,
-			IsActive:                 seed.isActive,
-		}
-
+	for index, seed := range seeds {
+		typeCodes := []string{"meeting-room", "conference-hall", "passenger-car", "projector", "workspace"}
+		typeCode := typeCodes[index]
 		err := tx.QueryRowContext(
 			ctx,
 			`INSERT INTO app.booking_rules (
@@ -532,25 +515,31 @@ func seedBookingRules(
 			    max_active_bookings_per_user,
 			    requires_approval,
 			    booking_horizon_days,
+			    workday_start,
+			    workday_end,
+			    unrestricted_time,
 			    is_active,
 			    created_at,
 			    updated_at
 			  )
-			  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+			  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
 			  RETURNING id;`,
-			rule.ResourceTypeID,
-			rule.MinDurationMinutes,
-			rule.MaxDurationMinutes,
-			rule.MaxActiveBookingsPerUser,
-			rule.RequiresApproval,
-			rule.BookingHorizonDays,
-			rule.IsActive,
+			seed.ResourceTypeID,
+			seed.MinDurationMinutes,
+			seed.MaxDurationMinutes,
+			seed.MaxActiveBookingsPerUser,
+			seed.RequiresApproval,
+			seed.BookingHorizonDays,
+			seed.WorkdayStart,
+			seed.WorkdayEnd,
+			seed.UnrestrictedTime,
+			seed.IsActive,
 			now,
-		).Scan(&rule.ID)
+		).Scan(&seed.ID)
 		if err != nil {
-			return nil, fmt.Errorf("insert booking rule for %q: %w", seed.typeCode, err)
+			return nil, fmt.Errorf("insert booking rule for %q: %w", typeCode, err)
 		}
-		result[seed.typeCode] = rule
+		result[typeCode] = seed
 	}
 
 	return result, nil
@@ -588,7 +577,7 @@ func seedResources(
 		{
 			key:         "neva",
 			name:        "Переговорная «Нева»",
-			description: "Светлая переговорная рядом с техническим блоком для интервью и рабочих встреч.",
+			description: "Светлая переговорная рядом с техническим блоком для встреч и интервью.",
 			category:    "rooms",
 			typeCode:    "meeting-room",
 			department:  departmentPtr("Информационные технологии"),
@@ -600,7 +589,7 @@ func seedResources(
 		{
 			key:         "volga",
 			name:        "Конференц-зал «Волга»",
-			description: "Основной зал для демонстраций, квартальных встреч и очных защит проектов.",
+			description: "Основной зал для презентаций, квартальных встреч и защит проектов.",
 			category:    "rooms",
 			typeCode:    "conference-hall",
 			department:  departmentPtr("Администрация"),
@@ -722,42 +711,53 @@ func seedResources(
 	return result, nil
 }
 
-func seedAvailability(ctx context.Context, tx *sql.Tx, resources map[string]resourceSeed, now time.Time) (int, error) {
+func seedResourceUnavailability(ctx context.Context, tx *sql.Tx, resources map[string]resourceSeed, now time.Time) (int, error) {
 	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	startFromTomorrow := dayStart.AddDate(0, 0, 1)
 	pastDay := dayStart.AddDate(0, 0, -2)
 
-	intervalsByResource := map[string][]timeWindow{
-		"neva":  buildDailyWindows(startFromTomorrow, 7, 9, 0, 18, 0),
-		"volga": buildDailyWindows(startFromTomorrow, 7, 10, 0, 19, 0),
+	intervalsByResource := map[string][]struct {
+		window timeWindow
+		reason *string
+	}{
+		"neva":  buildRepeatedUnavailability(startFromTomorrow, 7, 13, 0, 15, 0, "Техническое обслуживание переговорной"),
+		"volga": buildRepeatedUnavailability(startFromTomorrow, 7, 17, 0, 18, 0, "Подготовка и уборка зала"),
 	}
 
-	pastWindows := map[string][]timeWindow{
-		"neva":  {{start: dayAt(pastDay, 9, 0), end: dayAt(pastDay, 18, 0)}},
-		"volga": {{start: dayAt(pastDay, 10, 0), end: dayAt(pastDay, 19, 0)}},
-	}
+	intervalsByResource["neva"] = append(intervalsByResource["neva"], struct {
+		window timeWindow
+		reason *string
+	}{
+		window: timeWindow{start: dayAt(pastDay, 15, 0), end: dayAt(pastDay, 16, 0)},
+		reason: stringPtr("Завершённое обслуживание"),
+	})
+	intervalsByResource["volga"] = append(intervalsByResource["volga"], struct {
+		window timeWindow
+		reason *string
+	}{
+		window: timeWindow{start: dayAt(pastDay, 17, 0), end: dayAt(pastDay, 18, 0)},
+		reason: stringPtr("Прошлая подготовка зала"),
+	})
 
 	total := 0
-	for key, windows := range intervalsByResource {
+	for key, intervals := range intervalsByResource {
 		resource, ok := resources[key]
 		if !ok {
 			return 0, fmt.Errorf("resource %q is not seeded", key)
 		}
 
-		allWindows := append([]timeWindow{}, windows...)
-		allWindows = append(allWindows, pastWindows[key]...)
-
-		for _, interval := range allWindows {
+		for _, interval := range intervals {
 			if _, err := tx.ExecContext(
 				ctx,
-				`INSERT INTO app.resource_availability (resource_id, start_at, end_at, created_at, updated_at)
-				 VALUES ($1, $2, $3, $4, $4);`,
+				`INSERT INTO app.resource_unavailability (resource_id, start_at, end_at, reason, created_at, updated_at)
+				 VALUES ($1, $2, $3, $4, $5, $5);`,
 				resource.ID,
-				interval.start,
-				interval.end,
+				interval.window.start,
+				interval.window.end,
+				nullableString(interval.reason),
 				now,
 			); err != nil {
-				return 0, fmt.Errorf("insert availability for resource %q: %w", resource.Name, err)
+				return 0, fmt.Errorf("insert resource unavailability for %q: %w", resource.Name, err)
 			}
 			total++
 		}
@@ -830,8 +830,8 @@ func seedBookings(
 		{
 			resourceKey: "neva",
 			userID:      employee.ID,
-			startAt:     dayAt(tomorrow, 13, 0),
-			endAt:       dayAt(tomorrow, 14, 0),
+			startAt:     dayAt(tomorrow, 10, 0),
+			endAt:       dayAt(tomorrow, 11, 0),
 			purpose:     stringPtr("Технический разбор инцидента"),
 			status:      "confirmed",
 			createdAt:   now.Add(-3 * time.Hour),
@@ -873,8 +873,8 @@ func seedBookings(
 		{
 			resourceKey:      "volga",
 			userID:           hr.ID,
-			startAt:          dayAt(tomorrow.AddDate(0, 0, 3), 15, 0),
-			endAt:            dayAt(tomorrow.AddDate(0, 0, 3), 17, 0),
+			startAt:          dayAt(tomorrow.AddDate(0, 0, 3), 14, 0),
+			endAt:            dayAt(tomorrow.AddDate(0, 0, 3), 16, 0),
 			purpose:          stringPtr("Обучение команды адаптации"),
 			status:           "rejected",
 			approvedByUserID: &admin.ID,
@@ -942,7 +942,7 @@ func readCounts(ctx context.Context, db *sql.DB) (Counts, error) {
 		{target: &counts.Types, table: "app.resource_types"},
 		{target: &counts.Rules, table: "app.booking_rules"},
 		{target: &counts.Resources, table: "app.resources"},
-		{target: &counts.Availability, table: "app.resource_availability"},
+		{target: &counts.Unavailability, table: "app.resource_unavailability"},
 		{target: &counts.Bookings, table: "app.bookings"},
 	}
 
@@ -956,15 +956,34 @@ func readCounts(ctx context.Context, db *sql.DB) (Counts, error) {
 	return counts, nil
 }
 
-func buildDailyWindows(startDay time.Time, days int, startHour, startMinute, endHour, endMinute int) []timeWindow {
-	result := make([]timeWindow, 0, days)
+func buildRepeatedUnavailability(
+	startDay time.Time,
+	days int,
+	startHour, startMinute, endHour, endMinute int,
+	reason string,
+) []struct {
+	window timeWindow
+	reason *string
+} {
+	result := make([]struct {
+		window timeWindow
+		reason *string
+	}, 0, days)
+
 	for dayOffset := 0; dayOffset < days; dayOffset++ {
 		currentDay := startDay.AddDate(0, 0, dayOffset)
-		result = append(result, timeWindow{
-			start: dayAt(currentDay, startHour, startMinute),
-			end:   dayAt(currentDay, endHour, endMinute),
+		result = append(result, struct {
+			window timeWindow
+			reason *string
+		}{
+			window: timeWindow{
+				start: dayAt(currentDay, startHour, startMinute),
+				end:   dayAt(currentDay, endHour, endMinute),
+			},
+			reason: stringPtr(reason),
 		})
 	}
+
 	return result
 }
 
