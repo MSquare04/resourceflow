@@ -519,6 +519,7 @@ export const en = {
           maxActiveBookingsPerUser: "Maximum active bookings per user",
           bookingHorizonDays: "Booking horizon, days",
           requiresApproval: "Require approval",
+          requiresApprovalHint: "When enabled, new bookings must be approved by a manager or administrator.",
           isActive: "Rule enabled",
           isActiveHint: "An enabled rule applies to new bookings. A disabled rule is kept but no longer used.",
         },
