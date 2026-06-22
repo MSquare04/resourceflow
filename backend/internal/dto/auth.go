@@ -7,6 +7,11 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
 type AuthUser struct {
 	ID       int64    `json:"id"`
 	FullName string   `json:"full_name"`
@@ -25,3 +30,5 @@ type LoginResponse struct {
 type CurrentUserResponse struct {
 	User AuthUser `json:"user"`
 }
+
+type ChangePasswordResponse struct{}

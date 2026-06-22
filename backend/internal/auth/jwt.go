@@ -9,9 +9,10 @@ import (
 )
 
 type Claims struct {
-	UserID int64    `json:"user_id"`
-	Email  string   `json:"email"`
-	Roles  []string `json:"roles"`
+	UserID      int64    `json:"user_id"`
+	Email       string   `json:"email"`
+	Roles       []string `json:"roles"`
+	AuthVersion int      `json:"auth_version"`
 	jwt.RegisteredClaims
 }
 
@@ -31,14 +32,15 @@ func NewTokenManager(secret string, accessExpires time.Duration) *TokenManager {
 	}
 }
 
-func (m *TokenManager) GenerateAccessToken(userID int64, email string, roles []string) (string, time.Time, error) {
+func (m *TokenManager) GenerateAccessToken(userID int64, email string, roles []string, authVersion int) (string, time.Time, error) {
 	now := time.Now().UTC()
 	expiresAt := now.Add(m.accessExpires)
 
 	claims := Claims{
-		UserID: userID,
-		Email:  email,
-		Roles:  append([]string(nil), roles...),
+		UserID:      userID,
+		Email:       email,
+		Roles:       append([]string(nil), roles...),
+		AuthVersion: authVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   strconv.FormatInt(userID, 10),
 			ExpiresAt: jwt.NewNumericDate(expiresAt),

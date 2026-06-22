@@ -36,7 +36,7 @@ func (s *UserService) Create(ctx context.Context, req dto.CreateUserRequest) (dt
 	fullName := strings.TrimSpace(req.FullName)
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	password := strings.TrimSpace(req.Password)
-	if fullName == "" || email == "" || password == "" || !isValidEmail(email) {
+	if fullName == "" || email == "" || !isValidEmail(email) || !isValidPassword(password) {
 		return dto.UserResponse{}, ErrValidation
 	}
 
@@ -150,8 +150,12 @@ func (s *UserService) Update(ctx context.Context, id int64, req dto.UpdateUserRe
 	}
 
 	var passwordHash *string
-	if strings.TrimSpace(req.Password) != "" {
-		hash, err := s.hasher.Hash(strings.TrimSpace(req.Password))
+	trimmedPassword := strings.TrimSpace(req.Password)
+	if trimmedPassword != "" {
+		if !isValidPassword(trimmedPassword) {
+			return dto.UserResponse{}, ErrValidation
+		}
+		hash, err := s.hasher.Hash(trimmedPassword)
 		if err != nil {
 			return dto.UserResponse{}, err
 		}

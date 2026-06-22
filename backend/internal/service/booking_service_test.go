@@ -16,7 +16,7 @@ import (
 func TestBookingService_Create_StatusByRequiresApproval(t *testing.T) {
 	t.Parallel()
 
-	now := time.Now().UTC().Truncate(time.Second)
+	now := time.Date(2026, time.June, 22, 12, 0, 0, 0, time.UTC)
 	req := dto.CreateBookingRequest{
 		ResourceID: 10,
 		StartAt:    now.Add(2 * time.Hour),
@@ -570,6 +570,7 @@ func TestBookingService_StatusTransitions_TableDriven(t *testing.T) {
 		{name: "approve final forbidden", action: "approve", fromStatus: model.BookingStatusCancelled, wantErr: service.ErrBookingInvalidStatusAction},
 		{name: "reject final forbidden", action: "reject", fromStatus: model.BookingStatusCompleted, wantErr: service.ErrBookingInvalidStatusAction},
 		{name: "cancel final forbidden", action: "cancel", fromStatus: model.BookingStatusRejected, actorUserID: 77, bookingUserID: 77, wantErr: service.ErrBookingInvalidStatusAction},
+		{name: "cancel after end_at forbidden", action: "cancel", fromStatus: model.BookingStatusConfirmed, actorUserID: 77, bookingUserID: 77, wantErr: service.ErrBookingAlreadyEnded},
 		{name: "complete pending forbidden", action: "complete", fromStatus: model.BookingStatusPending, actorUserID: 77, bookingUserID: 77, wantErr: service.ErrBookingInvalidStatusAction},
 		{name: "cancel чужую booking forbidden", action: "cancel", fromStatus: model.BookingStatusConfirmed, actorUserID: 77, bookingUserID: 99, wantErr: service.ErrBookingNotFound},
 		{name: "complete чужую booking forbidden", action: "complete", fromStatus: model.BookingStatusConfirmed, actorUserID: 77, bookingUserID: 99, wantErr: service.ErrBookingNotFound},
@@ -593,6 +594,9 @@ func TestBookingService_StatusTransitions_TableDriven(t *testing.T) {
 			repo := &bookingRepoMock{
 				findByIDFn: func(ctx context.Context, id int64) (model.Booking, error) {
 					endAt := now.Add(time.Hour)
+					if tc.action == "cancel" && tc.wantErr == service.ErrBookingAlreadyEnded {
+						endAt = now
+					}
 					if tc.action == "complete" && tc.fromStatus == model.BookingStatusConfirmed {
 						endAt = now.Add(-time.Minute)
 					}
@@ -610,6 +614,9 @@ func TestBookingService_StatusTransitions_TableDriven(t *testing.T) {
 						return model.Booking{}, "", sql.ErrNoRows
 					}
 					endAt := now.Add(time.Hour)
+					if tc.action == "cancel" && tc.wantErr == service.ErrBookingAlreadyEnded {
+						endAt = now
+					}
 					if tc.action == "complete" && tc.fromStatus == model.BookingStatusConfirmed {
 						endAt = now.Add(-time.Minute)
 					}
@@ -629,9 +636,9 @@ func TestBookingService_StatusTransitions_TableDriven(t *testing.T) {
 			case "reject":
 				resp, err = svc.Reject(context.Background(), bookingID, actorUserID)
 			case "cancel":
-				resp, err = svc.Cancel(context.Background(), bookingID, actorUserID, tc.isPrivileged)
+				resp, err = svc.CancelAt(context.Background(), bookingID, actorUserID, tc.isPrivileged, now)
 			case "complete":
-				resp, err = svc.Complete(context.Background(), bookingID, actorUserID, tc.isPrivileged)
+				resp, err = svc.CompleteAt(context.Background(), bookingID, actorUserID, tc.isPrivileged, now)
 			}
 
 			if !errors.Is(err, tc.wantErr) {
@@ -749,7 +756,7 @@ func TestBookingService_Actions_StatusRules(t *testing.T) {
 					&userRepoMock{},
 					&bookingRuleRepoMock{},
 				)
-				resp, err := svc.Cancel(context.Background(), 1, 77, false)
+				resp, err := svc.CancelAt(context.Background(), 1, 77, false, now)
 				if err != nil {
 					t.Fatalf("Cancel should succeed from %s, got %v", from, err)
 				}
@@ -1115,4 +1122,147 @@ func TestBookingService_CompleteAt_TimeGuard(t *testing.T) {
 			t.Fatalf("unexpected completed_at in response: %#v", resp.CompletedAt)
 		}
 	})
+}
+
+func TestBookingService_CancelAt_PrivilegedAndOwnershipRules(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.June, 22, 12, 0, 0, 0, time.UTC)
+
+	t.Run("employee cannot cancel foreign booking", func(t *testing.T) {
+		repo := &bookingRepoMock{
+			findByIDFn: func(ctx context.Context, id int64) (model.Booking, error) {
+				return model.Booking{
+					ID:         id,
+					ResourceID: 10,
+					UserID:     99,
+					Status:     model.BookingStatusConfirmed,
+					StartAt:    now.Add(time.Hour),
+					EndAt:      now.Add(2 * time.Hour),
+				}, nil
+			},
+		}
+
+		svc := service.NewBookingService(repo, &resourceRepoMock{}, &userRepoMock{}, &bookingRuleRepoMock{})
+		_, err := svc.CancelAt(context.Background(), 1, 77, false, now)
+		if !errors.Is(err, service.ErrBookingForbidden) {
+			t.Fatalf("expected ErrBookingForbidden, got %v", err)
+		}
+	})
+
+	t.Run("manager can cancel foreign confirmed booking", func(t *testing.T) {
+		repo := &bookingRepoMock{
+			findByIDFn: func(ctx context.Context, id int64) (model.Booking, error) {
+				return model.Booking{
+					ID:         id,
+					ResourceID: 10,
+					UserID:     99,
+					Status:     model.BookingStatusConfirmed,
+					StartAt:    now.Add(time.Hour),
+					EndAt:      now.Add(2 * time.Hour),
+				}, nil
+			},
+			transitionStatusFn: func(ctx context.Context, id int64, expectedFrom []string, params repository.UpdateBookingStatusParams) (model.Booking, string, error) {
+				if params.CancelledAt == nil || !params.CancelledAt.Equal(now) {
+					t.Fatalf("unexpected cancelled_at: %#v", params.CancelledAt)
+				}
+				return model.Booking{
+					ID:          id,
+					ResourceID:  10,
+					UserID:      99,
+					Status:      model.BookingStatusCancelled,
+					StartAt:     now.Add(time.Hour),
+					EndAt:       now.Add(2 * time.Hour),
+					CancelledAt: params.CancelledAt,
+					UpdatedAt:   now,
+				}, model.BookingStatusConfirmed, nil
+			},
+		}
+
+		svc := service.NewBookingService(repo, &resourceRepoMock{}, &userRepoMock{}, &bookingRuleRepoMock{})
+		resp, err := svc.CancelAt(context.Background(), 1, 77, true, now)
+		if err != nil {
+			t.Fatalf("CancelAt returned error: %v", err)
+		}
+		if resp.Status != model.BookingStatusCancelled {
+			t.Fatalf("unexpected status: %q", resp.Status)
+		}
+		if resp.CancelledAt == nil || !resp.CancelledAt.Equal(now) {
+			t.Fatalf("unexpected cancelled_at in response: %#v", resp.CancelledAt)
+		}
+	})
+}
+
+func TestBookingService_CancelAt_RemovesBookingFromBusyIntervals(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.June, 22, 12, 0, 0, 0, time.UTC)
+	bookingsState := []model.Booking{
+		{ID: 1, ResourceID: 10, UserID: 77, Status: model.BookingStatusConfirmed, StartAt: now.Add(time.Hour), EndAt: now.Add(2 * time.Hour)},
+		{ID: 2, ResourceID: 10, UserID: 77, Status: model.BookingStatusPending, StartAt: now.Add(3 * time.Hour), EndAt: now.Add(4 * time.Hour)},
+	}
+
+	repo := &bookingRepoMock{
+		findByIDFn: func(ctx context.Context, id int64) (model.Booking, error) {
+			for _, booking := range bookingsState {
+				if booking.ID == id {
+					return booking, nil
+				}
+			}
+			return model.Booking{}, sql.ErrNoRows
+		},
+		transitionStatusFn: func(ctx context.Context, id int64, expectedFrom []string, params repository.UpdateBookingStatusParams) (model.Booking, string, error) {
+			for index := range bookingsState {
+				if bookingsState[index].ID != id {
+					continue
+				}
+				bookingsState[index].Status = params.Status
+				bookingsState[index].CancelledAt = params.CancelledAt
+				bookingsState[index].UpdatedAt = now
+				return bookingsState[index], model.BookingStatusConfirmed, nil
+			}
+			return model.Booking{}, "", sql.ErrNoRows
+		},
+		listBusyFn: func(ctx context.Context, resourceID int64, statuses []string, from, until time.Time) ([]model.Booking, error) {
+			var result []model.Booking
+			for _, booking := range bookingsState {
+				if booking.ResourceID != resourceID {
+					continue
+				}
+				active := false
+				for _, status := range statuses {
+					if booking.Status == status {
+						active = true
+						break
+					}
+				}
+				if !active || !booking.EndAt.After(from) || !booking.StartAt.Before(until) {
+					continue
+				}
+				result = append(result, booking)
+			}
+			return result, nil
+		},
+	}
+	resources := &resourceRepoMock{
+		findByIDFn: func(ctx context.Context, id int64) (model.Resource, error) {
+			return model.Resource{ID: id, Name: "Room 1"}, nil
+		},
+	}
+
+	svc := service.NewBookingService(repo, resources, &userRepoMock{}, &bookingRuleRepoMock{})
+	if _, err := svc.CancelAt(context.Background(), 1, 77, false, now); err != nil {
+		t.Fatalf("CancelAt returned error: %v", err)
+	}
+
+	busyIntervals, err := svc.ListBusyIntervalsByResourceID(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("ListBusyIntervalsByResourceID returned error: %v", err)
+	}
+	if len(busyIntervals) != 1 {
+		t.Fatalf("unexpected busy intervals count: got %d want 1", len(busyIntervals))
+	}
+	if !busyIntervals[0].StartAt.Equal(now.Add(3 * time.Hour)) {
+		t.Fatalf("cancelled booking remained in busy intervals: %+v", busyIntervals)
+	}
 }

@@ -149,6 +149,7 @@ type userRepoMock struct {
 	createFn           func(ctx context.Context, params repository.CreateUserParams) (model.User, error)
 	listFn             func(ctx context.Context) ([]model.User, error)
 	updateFn           func(ctx context.Context, id int64, params repository.UpdateUserParams) (model.User, error)
+	updatePasswordFn   func(ctx context.Context, id int64, params repository.UpdateUserPasswordParams) (model.User, error)
 	listRolesByUserFn  func(ctx context.Context, userID int64) ([]string, error)
 	validateRoleCodes  func(ctx context.Context, roleCodes []string) error
 	replaceRolesByUser func(ctx context.Context, userID int64, roleCodes []string) error
@@ -185,6 +186,13 @@ func (m *userRepoMock) List(ctx context.Context) ([]model.User, error) {
 func (m *userRepoMock) Update(ctx context.Context, id int64, params repository.UpdateUserParams) (model.User, error) {
 	if m.updateFn != nil {
 		return m.updateFn(ctx, id, params)
+	}
+	return model.User{}, errUnexpectedCall
+}
+
+func (m *userRepoMock) UpdatePassword(ctx context.Context, id int64, params repository.UpdateUserPasswordParams) (model.User, error) {
+	if m.updatePasswordFn != nil {
+		return m.updatePasswordFn(ctx, id, params)
 	}
 	return model.User{}, errUnexpectedCall
 }

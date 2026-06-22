@@ -18,3 +18,8 @@ export interface LoginResponse {
 export interface CurrentUserResponse {
   user: AuthUser;
 }
+
+export interface ChangePasswordPayload {
+  current_password: string;
+  new_password: string;
+}

@@ -15,12 +15,13 @@ export function LoginPage(): JSX.Element {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const locationState = (location.state as { from?: string; passwordChanged?: boolean } | null) ?? null;
 
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
   }
 
-  const redirectTo = (location.state as { from?: string } | null)?.from ?? "/";
+  const redirectTo = locationState?.from ?? "/";
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
@@ -52,6 +53,7 @@ export function LoginPage(): JSX.Element {
           <LanguageSwitcher variant="default" />
         </div>
         <form onSubmit={handleSubmit} className="form-grid">
+          {locationState?.passwordChanged ? <p className="success-text">{t("auth.passwordChangedSuccess")}</p> : null}
           <label className="field">
             <span>{t("common.email")}</span>
             <input

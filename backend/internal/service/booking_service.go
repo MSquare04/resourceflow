@@ -25,6 +25,7 @@ var (
 	ErrBookingStartNotFuture      = errors.New("booking start time cannot be earlier than the current minute")
 	ErrBookingResourceUnavailable = errors.New("resource is inactive or not bookable")
 	ErrBookingCompleteTooEarly    = errors.New("booking cannot be completed before end_at")
+	ErrBookingAlreadyEnded        = errors.New("booking has already ended")
 )
 
 var activeBookingStatuses = []string{
@@ -331,13 +332,34 @@ func (s *BookingService) GetByID(ctx context.Context, id int64, includeUserFullN
 }
 
 func (s *BookingService) Cancel(ctx context.Context, id int64, actorUserID int64, isPrivileged bool) (dto.BookingResponse, error) {
+	return s.CancelAt(ctx, id, actorUserID, isPrivileged, time.Now().UTC())
+}
+
+func (s *BookingService) CancelAt(
+	ctx context.Context,
+	id int64,
+	actorUserID int64,
+	isPrivileged bool,
+	now time.Time,
+) (dto.BookingResponse, error) {
 	booking, err := s.getBookingForAction(ctx, id)
 	if err != nil {
 		return dto.BookingResponse{}, err
 	}
 
 	if !isPrivileged && booking.UserID != actorUserID {
-		return dto.BookingResponse{}, ErrBookingNotFound
+		logBookingRejection(ctx, "booking cancel rejected: forbidden foreign booking access",
+			"booking_id", booking.ID,
+			"resource_id", booking.ResourceID,
+			"booking_user_id", booking.UserID,
+			"actor_user_id", actorUserID,
+			"status", booking.Status,
+			"status_from", booking.Status,
+			"status_to", model.BookingStatusCancelled,
+			"start_at", booking.StartAt.UTC(),
+			"end_at", booking.EndAt.UTC(),
+		)
+		return dto.BookingResponse{}, errors.Join(ErrBookingForbidden, ErrBookingNotFound)
 	}
 
 	if booking.Status != model.BookingStatusPending && booking.Status != model.BookingStatusConfirmed {
@@ -355,7 +377,23 @@ func (s *BookingService) Cancel(ctx context.Context, id int64, actorUserID int64
 		return dto.BookingResponse{}, ErrBookingInvalidStatusAction
 	}
 
-	now := time.Now().UTC()
+	now = now.UTC()
+	if !booking.EndAt.UTC().After(now) {
+		logBookingRejection(ctx, "booking cancel rejected: booking has already ended",
+			"booking_id", booking.ID,
+			"resource_id", booking.ResourceID,
+			"booking_user_id", booking.UserID,
+			"actor_user_id", actorUserID,
+			"status", booking.Status,
+			"status_from", booking.Status,
+			"status_to", model.BookingStatusCancelled,
+			"start_at", booking.StartAt.UTC(),
+			"end_at", booking.EndAt.UTC(),
+			"now", now,
+		)
+		return dto.BookingResponse{}, ErrBookingAlreadyEnded
+	}
+
 	updated, statusFrom, err := s.bookings.TransitionStatus(ctx, id, []string{
 		model.BookingStatusPending,
 		model.BookingStatusConfirmed,

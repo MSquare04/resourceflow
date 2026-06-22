@@ -23,6 +23,7 @@
     signInSubtitle: "Войдите, чтобы продолжить",
     emailPlaceholder: "you@company.com",
     passwordPlaceholder: "Введите пароль",
+    passwordChangedSuccess: "Пароль изменён. Войдите с новым паролем.",
     signIn: "Войти",
     signingIn: "Вход...",
     unexpectedLoginError: "Не удалось выполнить вход",
@@ -319,16 +320,20 @@
         allStatuses: "Все статусы",
         reset: "Сбросить фильтры",
       },
-        actions: {
-          cancel: "Отменить",
-          complete: "Завершить",
-          processing: "Выполняется...",
-          error: "Не удалось выполнить действие с бронированием",
-          tooEarlyToComplete: "Бронирование можно завершить только после наступления времени окончания",
+      actions: {
+        cancel: "Отменить",
+        processing: "Выполняется...",
+        errors: {
+          generic: "Не удалось выполнить действие с бронированием",
+          invalidTransition: "Отмена для этого статуса недоступна",
+          notFound: "Бронирование не найдено",
+          forbidden: "У вас нет прав на отмену этого бронирования",
+          alreadyEnded: "Нельзя отменить бронирование после времени окончания",
         },
+      },
       confirmations: {
         cancel: "Отменить бронирование ресурса \"{{resourceName}}\"?",
-        complete: "Завершить бронирование ресурса \"{{resourceName}}\"?",
+        cancelPrompt: "Отменить бронирование ресурса \"{{resourceName}}\"?",
       },
       empty: {
         title: "Бронирований пока нет",
@@ -367,19 +372,23 @@
       actions: {
         approve: "Подтвердить",
         reject: "Отклонить",
-        complete: "Завершить",
+        cancel: "Отменить",
         processing: "Выполняется...",
-          errors: {
-            generic: "Не удалось выполнить действие с бронированием",
-            invalidTransition: "Переход статуса бронирования недоступен",
-            notFound: "Бронирование не найдено",
-            tooEarlyToComplete: "Бронирование можно завершить только после наступления времени окончания",
-          },
+        errors: {
+          generic: "Не удалось выполнить действие с бронированием",
+          invalidTransition: "Отмена для этого статуса недоступна",
+          notFound: "Бронирование не найдено",
+          forbidden: "У вас нет прав на изменение этого бронирования",
+          alreadyEnded: "Нельзя отменить бронирование после времени окончания",
         },
+      },
       confirmations: {
         approve: "Подтвердить бронирование ресурса \"{{resourceName}}\"?",
         reject: "Отклонить бронирование ресурса \"{{resourceName}}\"?",
-        complete: "Завершить бронирование ресурса \"{{resourceName}}\"?",
+        cancel: "Отменить бронирование ресурса \"{{resourceName}}\"?",
+        approvePrompt: "Подтвердить бронирование ресурса \"{{resourceName}}\"?",
+        rejectPrompt: "Отклонить бронирование ресурса \"{{resourceName}}\"?",
+        cancelPrompt: "Отменить бронирование ресурса \"{{resourceName}}\"?",
       },
       empty: {
         title: "Бронирований пока нет",
@@ -555,6 +564,26 @@
       noResults: {
         title: "Ничего не найдено",
         description: "Попробуйте изменить поиск или фильтры.",
+      },
+    },
+    changePassword: {
+      title: "Сменить пароль",
+      submit: "Сохранить новый пароль",
+      submitting: "Сохранение...",
+      fields: {
+        currentPassword: "Текущий пароль",
+        newPassword: "Новый пароль",
+        confirmPassword: "Подтвердите новый пароль",
+      },
+      errors: {
+        generic: "Не удалось изменить пароль",
+        currentPasswordRequired: "Укажите текущий пароль",
+        newPasswordRequired: "Укажите новый пароль",
+        confirmPasswordRequired: "Подтвердите новый пароль",
+        confirmPasswordMismatch: "Подтверждение пароля не совпадает",
+        currentPasswordInvalid: "Текущий пароль указан неверно",
+        sameAsCurrent: "Новый пароль должен отличаться от текущего",
+        passwordPolicyViolation: "Пароль не соответствует требованиям",
       },
     },
     forbidden: {

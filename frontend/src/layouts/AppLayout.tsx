@@ -205,6 +205,10 @@ export function AppLayout(): JSX.Element {
   );
 
   const currentPageTitle = useMemo(() => {
+    if (location.pathname === "/profile/change-password") {
+      return t("pages.changePassword.title");
+    }
+
     const currentLink = visibleLinks.find((link) =>
       link.end ? location.pathname === link.to : location.pathname.startsWith(link.to),
     );
@@ -307,6 +311,11 @@ export function AppLayout(): JSX.Element {
     setIsProfileOpen(false);
     logout();
     navigate("/login", { replace: true });
+  };
+
+  const handleChangePassword = (): void => {
+    setIsProfileOpen(false);
+    navigate("/profile/change-password");
   };
 
   const handleNavLinkClick = (): void => {
@@ -475,7 +484,12 @@ export function AppLayout(): JSX.Element {
 
                 <div className="profile-dropdown__language">
                   <LanguageSwitcher variant="dropdown" />
+                  <button type="button" className="profile-dropdown__action" onClick={handleChangePassword} role="menuitem">
+                    <span>{t("pages.changePassword.title")}</span>
+                  </button>
                 </div>
+
+                <div className="profile-dropdown__divider" aria-hidden="true" />
 
                 <button type="button" className="profile-dropdown__logout" onClick={handleLogout} role="menuitem">
                   <span className="profile-dropdown__logout-icon" aria-hidden="true">
