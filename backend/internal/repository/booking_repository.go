@@ -19,6 +19,7 @@ type BookingRepository interface {
 	CountByUserAndStatuses(ctx context.Context, userID int64, statuses []string) (int64, error)
 	HasConflict(ctx context.Context, resourceID int64, startAt, endAt time.Time, statuses []string) (bool, error)
 	IsCoveredByAvailability(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error)
+	ProcessExpired(ctx context.Context, now time.Time) (ExpiredBookingProcessingResult, error)
 	UpdateStatus(ctx context.Context, id int64, params UpdateBookingStatusParams) (model.Booking, error)
 	TransitionStatus(ctx context.Context, id int64, expectedFrom []string, params UpdateBookingStatusParams) (model.Booking, string, error)
 }
@@ -42,6 +43,11 @@ type UpdateBookingStatusParams struct {
 	ApprovedAt       *time.Time
 	CancelledAt      *time.Time
 	CompletedAt      *time.Time
+}
+
+type ExpiredBookingProcessingResult struct {
+	CompletedCount int64
+	CancelledCount int64
 }
 
 func NewBookingRepository(db *sql.DB) *PostgresBookingRepository {
@@ -313,6 +319,39 @@ SELECT EXISTS (
 	}
 
 	return covered, nil
+}
+
+func (r *PostgresBookingRepository) ProcessExpired(ctx context.Context, now time.Time) (ExpiredBookingProcessingResult, error) {
+	query := `
+WITH completed AS (
+  UPDATE app.bookings
+  SET status = 'completed',
+      completed_at = COALESCE(completed_at, $1),
+      updated_at = $1
+  WHERE status = 'confirmed'
+    AND end_at <= $1
+  RETURNING id
+),
+cancelled AS (
+  UPDATE app.bookings
+  SET status = 'cancelled',
+      cancelled_at = COALESCE(cancelled_at, $1),
+      updated_at = $1
+  WHERE status = 'pending'
+    AND end_at <= $1
+  RETURNING id
+)
+SELECT
+  (SELECT COUNT(*) FROM completed),
+  (SELECT COUNT(*) FROM cancelled);
+`
+
+	var result ExpiredBookingProcessingResult
+	if err := r.db.QueryRowContext(ctx, query, now.UTC()).Scan(&result.CompletedCount, &result.CancelledCount); err != nil {
+		return ExpiredBookingProcessingResult{}, fmt.Errorf("process expired bookings query failed: %w", err)
+	}
+
+	return result, nil
 }
 
 func (r *PostgresBookingRepository) UpdateStatus(ctx context.Context, id int64, params UpdateBookingStatusParams) (model.Booking, error) {

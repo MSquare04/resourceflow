@@ -263,6 +263,14 @@ func handleBookingActionError(c *echo.Context, err error, operation string, book
 		return validationError(c, "invalid booking id")
 	case errors.Is(err, service.ErrBookingNotFound):
 		return notFoundError(c, "booking not found")
+	case errors.Is(err, service.ErrBookingCompleteTooEarly):
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Success: false,
+			Error: dto.APIError{
+				Code:    dto.ErrorCodeBookingTooEarlyToComplete,
+				Message: "booking cannot be completed before end_at",
+			},
+		})
 	case errors.Is(err, service.ErrBookingInvalidStatusAction):
 		return validationError(c, "booking status transition is not allowed")
 	default:

@@ -311,12 +311,13 @@ export const en = {
         allStatuses: "All statuses",
         reset: "Reset filters",
       },
-      actions: {
-        cancel: "Cancel",
-        complete: "Complete",
-        processing: "Processing...",
-        error: "Unable to process the booking action",
-      },
+        actions: {
+          cancel: "Cancel",
+          complete: "Complete",
+          processing: "Processing...",
+          error: "Unable to process the booking action",
+          tooEarlyToComplete: "The booking can only be completed after its end time",
+        },
       confirmations: {
         cancel: "Cancel the booking for “{{resourceName}}”?",
         complete: "Complete the booking for “{{resourceName}}”?",
@@ -360,12 +361,13 @@ export const en = {
         reject: "Reject",
         complete: "Complete",
         processing: "Processing...",
-        errors: {
-          generic: "Unable to process the booking action",
-          invalidTransition: "The booking status transition is not available",
-          notFound: "Booking not found",
+          errors: {
+            generic: "Unable to process the booking action",
+            invalidTransition: "The booking status transition is not available",
+            notFound: "Booking not found",
+            tooEarlyToComplete: "The booking can only be completed after its end time",
+          },
         },
-      },
       confirmations: {
         approve: "Approve the booking for “{{resourceName}}”?",
         reject: "Reject the booking for “{{resourceName}}”?",

@@ -32,6 +32,14 @@ function canCompleteBooking(status: BookingStatus): boolean {
   return status === "confirmed";
 }
 
+function mapActionError(error: ApiError, t: ReturnType<typeof useTranslation>["t"]): string {
+  if (error.code === "booking_too_early_to_complete") {
+    return t("pages.myBookings.actions.tooEarlyToComplete");
+  }
+
+  return error.message;
+}
+
 export function MyBookingsPage(): JSX.Element {
   const { t } = useTranslation();
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -84,7 +92,7 @@ export function MyBookingsPage(): JSX.Element {
       await loadBookings();
     } catch (actionRequestError) {
       if (actionRequestError instanceof ApiError) {
-        setActionError(actionRequestError.message);
+        setActionError(mapActionError(actionRequestError, t));
       } else if (actionRequestError instanceof Error) {
         setActionError(actionRequestError.message);
       } else {
@@ -268,4 +276,3 @@ export function MyBookingsPage(): JSX.Element {
     </section>
   );
 }
-

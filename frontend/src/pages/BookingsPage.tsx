@@ -33,14 +33,18 @@ function canComplete(status: BookingStatus): boolean {
   return status === "confirmed";
 }
 
-function mapActionErrorMessage(message: string, t: ReturnType<typeof useTranslation>["t"]): string {
-  switch (message) {
+function mapActionError(error: ApiError, t: ReturnType<typeof useTranslation>["t"]): string {
+  if (error.code === "booking_too_early_to_complete") {
+    return t("pages.bookings.actions.errors.tooEarlyToComplete");
+  }
+
+  switch (error.message) {
     case "booking status transition is not allowed":
       return t("pages.bookings.actions.errors.invalidTransition");
     case "booking not found":
       return t("pages.bookings.actions.errors.notFound");
     default:
-      return message;
+      return error.message;
   }
 }
 
@@ -101,7 +105,7 @@ export function BookingsPage(): JSX.Element {
       await loadBookings();
     } catch (requestError) {
       if (requestError instanceof ApiError) {
-        setActionError(mapActionErrorMessage(requestError.message, t));
+        setActionError(mapActionError(requestError, t));
       } else if (requestError instanceof Error) {
         setActionError(requestError.message);
       } else {
@@ -308,4 +312,3 @@ export function BookingsPage(): JSX.Element {
     </section>
   );
 }
-
