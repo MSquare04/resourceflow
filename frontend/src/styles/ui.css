@@ -503,6 +503,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
+  align-items: start;
 }
 
 .resource-details-card {
@@ -513,6 +514,10 @@
   display: grid;
   gap: 1rem;
   min-width: 0;
+}
+
+.resource-details-card--rule {
+  align-self: start;
 }
 
 .resource-details-card__header {
@@ -564,6 +569,34 @@
 }
 
 .resource-details-meta dd {
+  margin: 0;
+  font-weight: 500;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.resource-details-rule-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem 1rem;
+  margin: 0;
+}
+
+.resource-details-rule-meta__item {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.resource-details-rule-meta__label {
+  margin: 0;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.resource-details-rule-meta__value {
   margin: 0;
   font-weight: 500;
   min-width: 0;
@@ -1241,6 +1274,7 @@
   }
 
   .resource-details-meta,
+  .resource-details-rule-meta,
   .availability-list,
   .busy-interval-card,
   .availability-card,

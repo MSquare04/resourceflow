@@ -55,12 +55,11 @@ func TestResourceAvailabilityService_ProtectsActiveBookings(t *testing.T) {
 			wantErr: service.ErrAvailabilityConflict,
 		},
 		{
-			name:     "delete only covering interval breaks booking",
+			name:     "delete last interval is allowed",
 			deleteID: 1,
 			availability: []model.ResourceAvailability{
 				{ID: 1, ResourceID: resourceID, StartAt: now.Add(time.Hour), EndAt: now.Add(4 * time.Hour)},
 			},
-			wantErr: service.ErrAvailabilityConflict,
 		},
 		{
 			name:     "delete interval when another interval still covers booking",

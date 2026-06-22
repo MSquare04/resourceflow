@@ -292,10 +292,18 @@ func (r *PostgresBookingRepository) IsCoveredByAvailability(ctx context.Context,
 	query := `
 SELECT EXISTS (
   SELECT 1
-  FROM app.resource_availability ra
-  WHERE ra.resource_id = $1
-    AND ra.start_at <= $2
-    AND ra.end_at >= $3
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM app.resource_availability ra_any
+    WHERE ra_any.resource_id = $1
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM app.resource_availability ra
+    WHERE ra.resource_id = $1
+      AND ra.start_at <= $2
+      AND ra.end_at >= $3
+  )
 );
 `
 

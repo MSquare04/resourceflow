@@ -163,6 +163,47 @@ func TestBookingService_Create_Errors(t *testing.T) {
 		}
 	})
 
+	t.Run("booking without availability is allowed", func(t *testing.T) {
+		bookings := &bookingRepoMock{
+			isCoveredFn: func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) { return true, nil },
+			countByStatusesFn: func(ctx context.Context, userID int64, statuses []string) (int64, error) {
+				return 0, nil
+			},
+			hasConflictFn: func(ctx context.Context, resourceID int64, startAt, endAt time.Time, statuses []string) (bool, error) {
+				return false, nil
+			},
+			createFn: func(ctx context.Context, params repository.CreateBookingParams) (model.Booking, error) {
+				return model.Booking{
+					ID:         1,
+					ResourceID: params.ResourceID,
+					UserID:     params.UserID,
+					StartAt:    params.StartAt,
+					EndAt:      params.EndAt,
+					Status:     params.Status,
+					CreatedAt:  now,
+					UpdatedAt:  now,
+				}, nil
+			},
+		}
+		rules := &bookingRuleRepoMock{
+			findActiveByResourceTypeIDFn: func(ctx context.Context, resourceTypeID int64) (model.BookingRule, error) {
+				return model.BookingRule{
+					ResourceTypeID:           resourceTypeID,
+					MinDurationMinutes:       10,
+					MaxDurationMinutes:       240,
+					MaxActiveBookingsPerUser: 3,
+					BookingHorizonDays:       30,
+					IsActive:                 true,
+				}, nil
+			},
+		}
+		svc := service.NewBookingService(bookings, baseResource, baseUsers, rules)
+
+		if _, err := svc.Create(context.Background(), 55, baseReq); err != nil {
+			t.Fatalf("expected booking without availability to succeed, got %v", err)
+		}
+	})
+
 	t.Run("invalid interval returns validation", func(t *testing.T) {
 		svc := service.NewBookingService(&bookingRepoMock{}, baseResource, baseUsers, &bookingRuleRepoMock{})
 		req := baseReq
