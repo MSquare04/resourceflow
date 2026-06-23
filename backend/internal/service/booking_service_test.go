@@ -42,9 +42,6 @@ func TestBookingService_Create_StatusByRequiresApproval(t *testing.T) {
 			t.Parallel()
 
 			bookings := &bookingRepoMock{
-				isCoveredFn: func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) {
-					return true, nil
-				},
 				countByStatusesFn: func(ctx context.Context, userID int64, statuses []string) (int64, error) {
 					return 0, nil
 				},
@@ -128,7 +125,6 @@ func TestBookingService_Create_Errors(t *testing.T) {
 
 	t.Run("overlap returns conflict", func(t *testing.T) {
 		bookings := &bookingRepoMock{
-			isCoveredFn:       func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) { return true, nil },
 			countByStatusesFn: func(ctx context.Context, userID int64, statuses []string) (int64, error) { return 0, nil },
 			hasConflictFn: func(ctx context.Context, resourceID int64, startAt, endAt time.Time, statuses []string) (bool, error) {
 				return true, nil
@@ -237,9 +233,7 @@ func TestBookingService_Create_Errors(t *testing.T) {
 	})
 
 	t.Run("booking rule violation returns validation", func(t *testing.T) {
-		bookings := &bookingRepoMock{
-			isCoveredFn: func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) { return true, nil },
-		}
+		bookings := &bookingRepoMock{}
 		rules := &bookingRuleRepoMock{
 			findActiveByResourceTypeIDFn: func(ctx context.Context, resourceTypeID int64) (model.BookingRule, error) {
 				return model.BookingRule{
@@ -576,9 +570,6 @@ func TestBookingService_CreateAt_CurrentMinuteSemantics(t *testing.T) {
 		t.Helper()
 
 		bookings := &bookingRepoMock{
-			isCoveredFn: func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) {
-				return true, nil
-			},
 			countByStatusesFn: func(ctx context.Context, userID int64, statuses []string) (int64, error) {
 				return 0, nil
 			},

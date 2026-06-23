@@ -240,7 +240,6 @@ func resetApplicationData(ctx context.Context, tx *sql.Tx) error {
 TRUNCATE TABLE
   app.bookings,
   app.resource_unavailability,
-  app.resource_availability,
   app.booking_rules,
   app.resources,
   app.resource_types,

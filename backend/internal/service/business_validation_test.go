@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"resourceflow/backend/internal/dto"
 	"resourceflow/backend/internal/service"
@@ -25,21 +24,6 @@ func TestResourceService_Create_InvalidTypeCategoryRelation(t *testing.T) {
 		Name:       "Meeting Room A",
 		CategoryID: 1,
 		TypeID:     100,
-	})
-	if !errors.Is(err, service.ErrValidation) {
-		t.Fatalf("expected ErrValidation, got %v", err)
-	}
-}
-
-func TestResourceAvailabilityService_Create_InvalidInterval(t *testing.T) {
-	t.Parallel()
-
-	svc := service.NewResourceAvailabilityService(&availabilityRepoMock{}, &resourceRepoMock{}, &bookingRepoMock{})
-
-	now := time.Now().UTC().Truncate(time.Second)
-	_, err := svc.Create(context.Background(), 1, dto.CreateResourceAvailabilityRequest{
-		StartAt: now,
-		EndAt:   now,
 	})
 	if !errors.Is(err, service.ErrValidation) {
 		t.Fatalf("expected ErrValidation, got %v", err)

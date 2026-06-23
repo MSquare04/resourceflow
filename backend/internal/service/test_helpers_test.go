@@ -2,7 +2,6 @@ package service_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"time"
 
@@ -20,7 +19,6 @@ type bookingRepoMock struct {
 	findByIDFn         func(ctx context.Context, id int64) (model.Booking, error)
 	countByStatusesFn  func(ctx context.Context, userID int64, statuses []string) (int64, error)
 	hasConflictFn      func(ctx context.Context, resourceID int64, startAt, endAt time.Time, statuses []string) (bool, error)
-	isCoveredFn        func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error)
 	processExpiredFn   func(ctx context.Context, now time.Time) (repository.ExpiredBookingProcessingResult, error)
 	updateStatusFn     func(ctx context.Context, id int64, params repository.UpdateBookingStatusParams) (model.Booking, error)
 	transitionStatusFn func(ctx context.Context, id int64, expectedFrom []string, params repository.UpdateBookingStatusParams) (model.Booking, string, error)
@@ -77,13 +75,6 @@ func (m *bookingRepoMock) CountByUserAndStatuses(ctx context.Context, userID int
 func (m *bookingRepoMock) HasConflict(ctx context.Context, resourceID int64, startAt, endAt time.Time, statuses []string) (bool, error) {
 	if m.hasConflictFn != nil {
 		return m.hasConflictFn(ctx, resourceID, startAt, endAt, statuses)
-	}
-	return false, errUnexpectedCall
-}
-
-func (m *bookingRepoMock) IsCoveredByAvailability(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) {
-	if m.isCoveredFn != nil {
-		return m.isCoveredFn(ctx, resourceID, startAt, endAt)
 	}
 	return false, errUnexpectedCall
 }
@@ -310,49 +301,6 @@ func (m *resourceTypeRepoMock) Update(ctx context.Context, id int64, categoryID 
 		return m.updateFn(ctx, id, categoryID, code, name, description, isActive)
 	}
 	return model.ResourceType{}, errUnexpectedCall
-}
-
-type availabilityRepoMock struct {
-	createFn              func(ctx context.Context, params repository.CreateResourceAvailabilityParams) (model.ResourceAvailability, error)
-	listByResourceIDFn    func(ctx context.Context, resourceID int64) ([]model.ResourceAvailability, error)
-	findByIDAndResourceFn func(ctx context.Context, resourceID int64, id int64) (model.ResourceAvailability, error)
-	updateFn              func(ctx context.Context, resourceID int64, id int64, params repository.UpdateResourceAvailabilityParams) (model.ResourceAvailability, error)
-	deleteFn              func(ctx context.Context, resourceID int64, id int64) (bool, error)
-}
-
-func (m *availabilityRepoMock) Create(ctx context.Context, params repository.CreateResourceAvailabilityParams) (model.ResourceAvailability, error) {
-	if m.createFn != nil {
-		return m.createFn(ctx, params)
-	}
-	return model.ResourceAvailability{}, errUnexpectedCall
-}
-
-func (m *availabilityRepoMock) ListByResourceID(ctx context.Context, resourceID int64) ([]model.ResourceAvailability, error) {
-	if m.listByResourceIDFn != nil {
-		return m.listByResourceIDFn(ctx, resourceID)
-	}
-	return nil, errUnexpectedCall
-}
-
-func (m *availabilityRepoMock) FindByIDAndResourceID(ctx context.Context, resourceID int64, id int64) (model.ResourceAvailability, error) {
-	if m.findByIDAndResourceFn != nil {
-		return m.findByIDAndResourceFn(ctx, resourceID, id)
-	}
-	return model.ResourceAvailability{}, sql.ErrNoRows
-}
-
-func (m *availabilityRepoMock) Update(ctx context.Context, resourceID int64, id int64, params repository.UpdateResourceAvailabilityParams) (model.ResourceAvailability, error) {
-	if m.updateFn != nil {
-		return m.updateFn(ctx, resourceID, id, params)
-	}
-	return model.ResourceAvailability{}, errUnexpectedCall
-}
-
-func (m *availabilityRepoMock) Delete(ctx context.Context, resourceID int64, id int64) (bool, error) {
-	if m.deleteFn != nil {
-		return m.deleteFn(ctx, resourceID, id)
-	}
-	return false, errUnexpectedCall
 }
 
 type unavailabilityCheckerMock struct {

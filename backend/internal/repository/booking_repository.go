@@ -18,7 +18,6 @@ type BookingRepository interface {
 	FindByID(ctx context.Context, id int64) (model.Booking, error)
 	CountByUserAndStatuses(ctx context.Context, userID int64, statuses []string) (int64, error)
 	HasConflict(ctx context.Context, resourceID int64, startAt, endAt time.Time, statuses []string) (bool, error)
-	IsCoveredByAvailability(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error)
 	ProcessExpired(ctx context.Context, now time.Time) (ExpiredBookingProcessingResult, error)
 	UpdateStatus(ctx context.Context, id int64, params UpdateBookingStatusParams) (model.Booking, error)
 	TransitionStatus(ctx context.Context, id int64, expectedFrom []string, params UpdateBookingStatusParams) (model.Booking, string, error)
@@ -328,33 +327,6 @@ SELECT EXISTS (
 	}
 
 	return exists, nil
-}
-
-func (r *PostgresBookingRepository) IsCoveredByAvailability(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) {
-	query := `
-SELECT EXISTS (
-  SELECT 1
-  WHERE NOT EXISTS (
-    SELECT 1
-    FROM app.resource_availability ra_any
-    WHERE ra_any.resource_id = $1
-  )
-  OR EXISTS (
-    SELECT 1
-    FROM app.resource_availability ra
-    WHERE ra.resource_id = $1
-      AND ra.start_at <= $2
-      AND ra.end_at >= $3
-  )
-);
-`
-
-	var covered bool
-	if err := r.runner.QueryRowContext(ctx, query, resourceID, startAt, endAt).Scan(&covered); err != nil {
-		return false, fmt.Errorf("check booking availability coverage query failed: %w", err)
-	}
-
-	return covered, nil
 }
 
 func (r *PostgresBookingRepository) ProcessExpired(ctx context.Context, now time.Time) (ExpiredBookingProcessingResult, error) {
