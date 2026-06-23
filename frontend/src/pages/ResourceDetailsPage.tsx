@@ -1,39 +1,43 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+﻿import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { createBooking } from "../api/bookings";
+import { createBatchBookings, createBooking, previewBatchBookings } from "../api/bookings";
 import { listBookingRules } from "../api/bookingRules";
 import { ApiError } from "../api/client";
 import { listDepartments } from "../api/departments";
 import {
-  createResourceUnavailability as createResourceAvailability,
-  deleteResourceUnavailability as deleteResourceAvailability,
+  createResourceUnavailability,
+  deleteResourceUnavailability,
   getResource,
   listResourceBusyIntervalsInRange,
   listResourceCategories,
-  listResourceUnavailability as listResourceAvailability,
+  listResourceUnavailability,
   listResourceTypes,
-  updateResourceUnavailability as updateResourceAvailability,
+  updateResourceUnavailability,
 } from "../api/resources";
 import { useRoles } from "../auth/useRoles";
 import { DatePicker } from "../components/DatePicker";
 import { DateTimeField } from "../components/DateTimeField";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
+import { MultiDatePicker } from "../components/MultiDatePicker";
 import { PageHeader } from "../components/PageHeader";
+import { TimePicker } from "../components/TimePicker";
 import type { BookingRule } from "../types/bookingRules";
+import type { BatchBookingPreviewResponse } from "../types/bookings";
 import type {
   Resource,
   ResourceBusyInterval,
   ResourceCategory,
   ResourceType,
-  ResourceUnavailability as ResourceAvailability,
+  ResourceUnavailability,
 } from "../types/resources";
 import type { Department } from "../types/users";
-import { formatLocalDate, formatLocalTime, formatUtcDateTime } from "../utils/datetime";
+import { formatDisplayDate, formatLocalDate, formatLocalTime, formatUtcDateTime } from "../utils/datetime";
 
-type AvailabilityFormMode = "create" | "edit";
+type UnavailabilityFormMode = "create" | "edit";
+type BookingMode = "single" | "multiple";
 
 function mapBookingError(error: ApiError, t: ReturnType<typeof useTranslation>["t"]): string {
   if (error.code === "conflict" || error.status === 409) {
@@ -70,19 +74,19 @@ function mapBookingError(error: ApiError, t: ReturnType<typeof useTranslation>["
   }
 }
 
-function mapAvailabilityError(error: ApiError, t: ReturnType<typeof useTranslation>["t"]): string {
+function mapUnavailabilityError(error: ApiError, t: ReturnType<typeof useTranslation>["t"]): string {
   if (error.code === "conflict" || error.status === 409) {
-    return t("pages.resourceDetails.availability.errors.activeBookingConflict");
+    return t("pages.resourceDetails.unavailability.errors.activeBookingConflict");
   }
 
   const message = error.message;
   switch (message) {
     case "invalid resource unavailability payload":
-      return t("pages.resourceDetails.availability.errors.invalidPayload");
+      return t("pages.resourceDetails.unavailability.errors.invalidPayload");
     case "resource not found":
-      return t("pages.resourceDetails.availability.errors.resourceNotFound");
+      return t("pages.resourceDetails.unavailability.errors.resourceNotFound");
     case "resource unavailability not found":
-      return t("pages.resourceDetails.availability.errors.availabilityNotFound");
+      return t("pages.resourceDetails.unavailability.errors.unavailabilityNotFound");
     default:
       return message;
   }
@@ -123,6 +127,24 @@ function parseLocalDateKey(value: string): Date {
 
 function addMinutes(date: Date, minutes: number): Date {
   return new Date(date.getTime() + minutes * 60_000);
+}
+
+function buildSequentialDateKeys(startDateKey: string, days: number): string[] {
+  const result: string[] = [];
+  const startDate = parseLocalDateKey(startDateKey);
+  for (let index = 0; index < days; index += 1) {
+    const nextDate = new Date(startDate);
+    nextDate.setDate(startDate.getDate() + index);
+    result.push(getLocalDateKey(nextDate));
+  }
+  return result;
+}
+
+function getTimePart(dateTimeValue: string): string {
+  if (!dateTimeValue.includes("T")) {
+    return "";
+  }
+  return dateTimeValue.slice(11, 16);
 }
 
 function intervalsIntersect(startAt: number, endAt: number, otherStartAt: number, otherEndAt: number): boolean {
@@ -205,7 +227,7 @@ export function ResourceDetailsPage(): JSX.Element {
   const [categories, setCategories] = useState<ResourceCategory[]>([]);
   const [types, setTypes] = useState<ResourceType[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [availability, setAvailability] = useState<ResourceAvailability[]>([]);
+  const [unavailabilityIntervals, setUnavailabilityIntervals] = useState<ResourceUnavailability[]>([]);
   const [bookingRules, setBookingRules] = useState<BookingRule[]>([]);
   const [busyIntervals, setBusyIntervals] = useState<ResourceBusyInterval[]>([]);
   const [loading, setLoading] = useState(true);
@@ -214,23 +236,59 @@ export function ResourceDetailsPage(): JSX.Element {
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
   const [purpose, setPurpose] = useState("");
+  const [bookingMode, setBookingMode] = useState<BookingMode>("single");
+  const [batchSelectedDates, setBatchSelectedDates] = useState<string[]>(() => [getLocalDateKey(new Date())]);
+  const [selectedBatchPresetDays, setSelectedBatchPresetDays] = useState<number | null>(null);
+  const [batchStartTime, setBatchStartTime] = useState("");
+  const [batchEndTime, setBatchEndTime] = useState("");
+  const [batchPreview, setBatchPreview] = useState<BatchBookingPreviewResponse | null>(null);
+  const [batchFormError, setBatchFormError] = useState<string | null>(null);
+  const [isBatchPreviewLoading, setIsBatchPreviewLoading] = useState(false);
+  const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [busyLoading, setBusyLoading] = useState(true);
   const [busyError, setBusyError] = useState<string | null>(null);
-  const [isAvailabilityFormOpen, setIsAvailabilityFormOpen] = useState(false);
-  const [availabilityFormMode, setAvailabilityFormMode] = useState<AvailabilityFormMode>("create");
-  const [editingAvailabilityId, setEditingAvailabilityId] = useState<number | null>(null);
-  const [availabilityStartAt, setAvailabilityStartAt] = useState("");
-  const [availabilityEndAt, setAvailabilityEndAt] = useState("");
-  const [availabilityReason, setAvailabilityReason] = useState("");
-  const [availabilityFormError, setAvailabilityFormError] = useState<string | null>(null);
-  const [availabilityActionError, setAvailabilityActionError] = useState<string | null>(null);
-  const [isAvailabilitySubmitting, setIsAvailabilitySubmitting] = useState(false);
-  const [pendingAvailabilityId, setPendingAvailabilityId] = useState<number | null>(null);
-  const availabilityFormRef = useRef<HTMLFormElement | null>(null);
+  const [isUnavailabilityFormOpen, setIsUnavailabilityFormOpen] = useState(false);
+  const [unavailabilityFormMode, setUnavailabilityFormMode] = useState<UnavailabilityFormMode>("create");
+  const [editingUnavailabilityId, setEditingUnavailabilityId] = useState<number | null>(null);
+  const [unavailabilityStartAt, setUnavailabilityStartAt] = useState("");
+  const [unavailabilityEndAt, setUnavailabilityEndAt] = useState("");
+  const [unavailabilityReason, setUnavailabilityReason] = useState("");
+  const [unavailabilityFormError, setUnavailabilityFormError] = useState<string | null>(null);
+  const [unavailabilityActionError, setUnavailabilityActionError] = useState<string | null>(null);
+  const [isUnavailabilitySubmitting, setIsUnavailabilitySubmitting] = useState(false);
+  const [pendingUnavailabilityId, setPendingUnavailabilityId] = useState<number | null>(null);
+  const unavailabilityFormRef = useRef<HTMLFormElement | null>(null);
   const bookingRuleActionButtonRef = useRef<HTMLButtonElement | null>(null);
+  const batchPreviewRequestIdRef = useRef(0);
   const startAtMin = toDateTimeLocalValue(getCurrentLocalMinute());
+
+  useEffect(() => {
+    if (!batchStartTime) {
+      const initialStart = getCurrentLocalMinute();
+      setBatchStartTime(toDateTimeLocalValue(initialStart).slice(11, 16));
+      setBatchEndTime(toDateTimeLocalValue(addMinutes(initialStart, 30)).slice(11, 16));
+    }
+  }, [batchEndTime, batchStartTime]);
+
+  useEffect(() => {
+    if (startAt) {
+      setBatchStartTime(getTimePart(startAt));
+    }
+  }, [startAt]);
+
+  useEffect(() => {
+    if (endAt) {
+      setBatchEndTime(getTimePart(endAt));
+    }
+  }, [endAt]);
+
+  useEffect(() => {
+    batchPreviewRequestIdRef.current += 1;
+    setBatchPreview(null);
+    setBatchFormError(null);
+  }, [batchStartTime, batchEndTime, bookingMode, purpose, resourceId]);
 
   useEffect(() => {
     void loadResourceDetails();
@@ -255,11 +313,11 @@ export function ResourceDetailsPage(): JSX.Element {
     setError(null);
 
     try {
-      const [resourceData, categoriesData, typesData, availabilityData, bookingRulesData] = await Promise.all([
+      const [resourceData, categoriesData, typesData, unavailabilityData, bookingRulesData] = await Promise.all([
         getResource(resourceId),
         listResourceCategories(),
         listResourceTypes(),
-        listResourceAvailability(resourceId),
+        listResourceUnavailability(resourceId),
         listBookingRules(),
       ]);
       let departmentsData: Department[] = [];
@@ -276,7 +334,7 @@ export function ResourceDetailsPage(): JSX.Element {
       setCategories(categoriesData);
       setTypes(typesData);
       setDepartments(departmentsData);
-      setAvailability(availabilityData);
+      setUnavailabilityIntervals(unavailabilityData);
       setBookingRules(bookingRulesData);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : t("errors.generic"));
@@ -314,10 +372,10 @@ export function ResourceDetailsPage(): JSX.Element {
     [departments],
   );
 
-  const uniqueAvailability = useMemo(() => {
-    const uniqueSlots = new Map<string, ResourceAvailability>();
+  const uniqueUnavailability = useMemo(() => {
+    const uniqueSlots = new Map<string, ResourceUnavailability>();
 
-    for (const slot of availability) {
+    for (const slot of unavailabilityIntervals) {
       const key = `${slot.start_at}__${slot.end_at}`;
       if (!uniqueSlots.has(key)) {
         uniqueSlots.set(key, slot);
@@ -327,16 +385,16 @@ export function ResourceDetailsPage(): JSX.Element {
     return [...uniqueSlots.values()].sort(
       (left, right) => new Date(left.start_at).getTime() - new Date(right.start_at).getTime(),
     );
-  }, [availability]);
+  }, [unavailabilityIntervals]);
 
-  const futureAvailability = useMemo(() => {
+  const futureUnavailability = useMemo(() => {
     const now = Date.now();
 
-    return uniqueAvailability.filter((slot) => {
+    return uniqueUnavailability.filter((slot) => {
       const endTime = new Date(slot.end_at).getTime();
       return !Number.isNaN(endTime) && endTime > now;
     });
-  }, [uniqueAvailability]);
+  }, [uniqueUnavailability]);
   const visibleBusyIntervals = useMemo(() => {
     const uniqueIntervals = new Map<string, ResourceBusyInterval>();
 
@@ -360,9 +418,15 @@ export function ResourceDetailsPage(): JSX.Element {
       .filter((rule) => rule.resource_type_id === resource.type_id && rule.is_active)
       .sort((left, right) => right.id - left.id)[0] ?? null;
   }, [bookingRules, resource]);
-  const hasAdditionalRestrictions = uniqueAvailability.length > 0;
+  const hasAdditionalRestrictions = uniqueUnavailability.length > 0;
   const bookingDisabled = !activeBookingRule || !resource?.is_active || !resource?.is_bookable;
   const bookingFormAvailable = !!activeBookingRule && !!resource?.is_active && !!resource?.is_bookable;
+  const canSubmitBatch =
+    batchSelectedDates.length > 0 &&
+    batchPreview !== null &&
+    batchPreview.can_create &&
+    batchPreview.items.every((item) => item.valid) &&
+    !isBatchPreviewLoading;
   const selectedDayStart = useMemo(() => parseLocalDateKey(selectedDate), [selectedDate]);
   const selectedDayEnd = useMemo(() => {
     const nextDay = new Date(selectedDayStart);
@@ -416,7 +480,7 @@ export function ResourceDetailsPage(): JSX.Element {
   }
 
   function intersectsAdditionalRestrictions(startAtMs: number, endAtMs: number): boolean {
-    return uniqueAvailability.some((slot) => {
+    return uniqueUnavailability.some((slot) => {
       const slotStart = new Date(slot.start_at).getTime();
       const slotEnd = new Date(slot.end_at).getTime();
       return intervalsIntersect(startAtMs, endAtMs, slotStart, slotEnd);
@@ -577,48 +641,178 @@ export function ResourceDetailsPage(): JSX.Element {
     setFormError(null);
   }
 
-  function resetAvailabilityForm(): void {
-    setAvailabilityFormMode("create");
-    setEditingAvailabilityId(null);
-    setAvailabilityStartAt("");
-    setAvailabilityEndAt("");
-    setAvailabilityReason("");
-    setAvailabilityFormError(null);
+  function toggleBatchDate(dateKey: string): void {
+    batchPreviewRequestIdRef.current += 1;
+    setSelectedBatchPresetDays(null);
+    setBatchSelectedDates((current) => {
+      const nextDates = current.includes(dateKey) ? current.filter((item) => item !== dateKey) : [...current, dateKey];
+      return [...nextDates].sort();
+    });
+    setBatchPreview(null);
+    setBatchFormError(null);
   }
 
-  function closeAvailabilityForm(): void {
-    setIsAvailabilityFormOpen(false);
-    resetAvailabilityForm();
+  function handleBatchQuickRange(days: number): void {
+    batchPreviewRequestIdRef.current += 1;
+    setSelectedBatchPresetDays(days);
+    setBatchSelectedDates(buildSequentialDateKeys(selectedDate, days));
+    setBatchPreview(null);
+    setBatchFormError(null);
   }
 
-  function openAvailabilityCreateForm(): void {
-    resetAvailabilityForm();
-    setIsAvailabilityFormOpen(true);
+  function removeBatchDate(dateKey: string): void {
+    batchPreviewRequestIdRef.current += 1;
+    setSelectedBatchPresetDays(null);
+    setBatchSelectedDates((current) => {
+      const nextDates = current.filter((item) => item !== dateKey);
+
+      if (nextDates.length === 0) {
+        setBatchPreview({ can_create: false, items: [] });
+        setBatchFormError(null);
+        return nextDates;
+      }
+
+      if (batchPreview) {
+        void runBatchPreview(nextDates);
+      } else {
+        setBatchPreview(null);
+        setBatchFormError(null);
+      }
+
+      return nextDates;
+    });
   }
 
-  function openAvailabilityEditForm(slot: ResourceAvailability): void {
-    setAvailabilityFormMode("edit");
-    setEditingAvailabilityId(slot.id);
-    setAvailabilityStartAt(toLocalInputValue(slot.start_at));
-    setAvailabilityEndAt(toLocalInputValue(slot.end_at));
-    setAvailabilityReason(slot.reason ?? "");
-    setAvailabilityFormError(null);
-    setIsAvailabilityFormOpen(true);
+  function validateBatchBooking(): string | null {
+    if (batchSelectedDates.length === 0) {
+      return t("pages.resourceDetails.booking.multiple.errors.noDates");
+    }
+
+    if (!batchStartTime || !batchEndTime) {
+      return t("pages.resourceDetails.booking.errors.requiredDates");
+    }
+
+    if (batchStartTime >= batchEndTime) {
+      return t("pages.resourceDetails.booking.errors.invalidRange");
+    }
+
+    return null;
+  }
+
+  function mapBatchPreviewCode(errorCode?: string): string {
+    switch (errorCode) {
+      case "booking_conflict":
+        return t("pages.resourceDetails.booking.multiple.preview.conflict");
+      case "booking_outside_workday":
+        return t("pages.resourceDetails.booking.multiple.preview.outsideWorkday");
+      case "booking_in_unavailability":
+        return t("pages.resourceDetails.booking.multiple.preview.technicalRestriction");
+      case "booking_horizon_exceeded":
+        return t("pages.resourceDetails.booking.multiple.preview.horizonExceeded");
+      case "booking_limit_exceeded":
+        return t("pages.resourceDetails.booking.multiple.preview.limitExceeded");
+      case "booking_start_in_past":
+        return t("pages.resourceDetails.booking.multiple.preview.startInPast");
+      case "booking_resource_unavailable":
+        return t("pages.resourceDetails.booking.multiple.preview.resourceUnavailable");
+      case "booking_rule_not_configured":
+        return t("pages.resourceDetails.booking.multiple.preview.ruleNotConfigured");
+      default:
+        return t("pages.resourceDetails.booking.multiple.preview.invalid");
+    }
+  }
+
+  async function runBatchPreview(dates: string[] = batchSelectedDates): Promise<void> {
+    const validationError = validateBatchBooking();
+    if (validationError) {
+      setBatchFormError(validationError);
+      return;
+    }
+
+    if (!resource) {
+      setBatchFormError(t("pages.resourceDetails.booking.errors.resourceNotFound"));
+      return;
+    }
+
+    setBatchFormError(null);
+    setIsBatchPreviewLoading(true);
+    const requestId = batchPreviewRequestIdRef.current + 1;
+    batchPreviewRequestIdRef.current = requestId;
+
+    try {
+      const preview = await previewBatchBookings({
+        resource_id: resource.id,
+        dates,
+        start_time: batchStartTime,
+        end_time: batchEndTime,
+        purpose: purpose.trim() ? purpose.trim() : null,
+      });
+      if (batchPreviewRequestIdRef.current === requestId) {
+        setBatchPreview(preview);
+      }
+    } catch (submitError) {
+      if (batchPreviewRequestIdRef.current === requestId) {
+        if (submitError instanceof ApiError) {
+          setBatchFormError(submitError.message);
+        } else if (submitError instanceof Error) {
+          setBatchFormError(submitError.message);
+        } else {
+          setBatchFormError(t("pages.resourceDetails.booking.errors.generic"));
+        }
+      }
+    } finally {
+      if (batchPreviewRequestIdRef.current === requestId) {
+        setIsBatchPreviewLoading(false);
+      }
+    }
+  }
+
+  async function handleBatchPreview(): Promise<void> {
+    await runBatchPreview();
+  }
+
+  function resetUnavailabilityForm(): void {
+    setUnavailabilityFormMode("create");
+    setEditingUnavailabilityId(null);
+    setUnavailabilityStartAt("");
+    setUnavailabilityEndAt("");
+    setUnavailabilityReason("");
+    setUnavailabilityFormError(null);
+  }
+
+  function closeUnavailabilityForm(): void {
+    setIsUnavailabilityFormOpen(false);
+    resetUnavailabilityForm();
+  }
+
+  function openUnavailabilityCreateForm(): void {
+    resetUnavailabilityForm();
+    setIsUnavailabilityFormOpen(true);
+  }
+
+  function openUnavailabilityEditForm(slot: ResourceUnavailability): void {
+    setUnavailabilityFormMode("edit");
+    setEditingUnavailabilityId(slot.id);
+    setUnavailabilityStartAt(toLocalInputValue(slot.start_at));
+    setUnavailabilityEndAt(toLocalInputValue(slot.end_at));
+    setUnavailabilityReason(slot.reason ?? "");
+    setUnavailabilityFormError(null);
+    setIsUnavailabilityFormOpen(true);
   }
 
   useEffect(() => {
-    if (!isAdmin || !isAvailabilityFormOpen) {
+    if (!isAdmin || !isUnavailabilityFormOpen) {
       return;
     }
 
     const frameId = window.requestAnimationFrame(() => {
-      availabilityFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      unavailabilityFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
 
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [availabilityFormMode, editingAvailabilityId, isAdmin, isAvailabilityFormOpen]);
+  }, [unavailabilityFormMode, editingUnavailabilityId, isAdmin, isUnavailabilityFormOpen]);
 
   function openBookingRuleEditor(): void {
     if (!resource) {
@@ -638,24 +832,24 @@ export function ResourceDetailsPage(): JSX.Element {
     });
   }
 
-  function validateAvailabilityForm(): string | null {
-    if (!availabilityStartAt || !availabilityEndAt) {
-      return t("pages.resourceDetails.availability.errors.requiredDates");
+  function validateUnavailabilityForm(): string | null {
+    if (!unavailabilityStartAt || !unavailabilityEndAt) {
+      return t("pages.resourceDetails.unavailability.errors.requiredDates");
     }
 
-    const startValue = new Date(availabilityStartAt);
-    const endValue = new Date(availabilityEndAt);
+    const startValue = new Date(unavailabilityStartAt);
+    const endValue = new Date(unavailabilityEndAt);
 
     if (Number.isNaN(startValue.getTime()) || Number.isNaN(endValue.getTime())) {
-      return t("pages.resourceDetails.availability.errors.invalidDates");
+      return t("pages.resourceDetails.unavailability.errors.invalidDates");
     }
 
     if (startValue >= endValue) {
-      return t("pages.resourceDetails.availability.errors.invalidRange");
+      return t("pages.resourceDetails.unavailability.errors.invalidRange");
     }
 
-    const duplicateExists = uniqueAvailability.some((slot) => {
-      if (availabilityFormMode === "edit" && slot.id === editingAvailabilityId) {
+    const duplicateExists = uniqueUnavailability.some((slot) => {
+      if (unavailabilityFormMode === "edit" && slot.id === editingUnavailabilityId) {
         return false;
       }
 
@@ -663,78 +857,78 @@ export function ResourceDetailsPage(): JSX.Element {
     });
 
     if (duplicateExists) {
-      return t("pages.resourceDetails.availability.errors.duplicate");
+      return t("pages.resourceDetails.unavailability.errors.duplicate");
     }
 
     return null;
   }
 
-  async function handleAvailabilitySubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+  async function handleUnavailabilitySubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
 
-    const validationError = validateAvailabilityForm();
+    const validationError = validateUnavailabilityForm();
     if (validationError) {
-      setAvailabilityFormError(validationError);
+      setUnavailabilityFormError(validationError);
       return;
     }
 
-    setAvailabilityFormError(null);
-    setAvailabilityActionError(null);
-    setIsAvailabilitySubmitting(true);
+    setUnavailabilityFormError(null);
+    setUnavailabilityActionError(null);
+    setIsUnavailabilitySubmitting(true);
 
     try {
       const payload = {
-        start_at: new Date(availabilityStartAt).toISOString(),
-        end_at: new Date(availabilityEndAt).toISOString(),
-        reason: availabilityReason.trim() || null,
+        start_at: new Date(unavailabilityStartAt).toISOString(),
+        end_at: new Date(unavailabilityEndAt).toISOString(),
+        reason: unavailabilityReason.trim() || null,
       };
 
-      if (availabilityFormMode === "create") {
-        await createResourceAvailability(resourceId, payload);
-      } else if (editingAvailabilityId !== null) {
-        await updateResourceAvailability(resourceId, editingAvailabilityId, payload);
+      if (unavailabilityFormMode === "create") {
+        await createResourceUnavailability(resourceId, payload);
+      } else if (editingUnavailabilityId !== null) {
+        await updateResourceUnavailability(resourceId, editingUnavailabilityId, payload);
       }
 
       await loadResourceDetails();
-      closeAvailabilityForm();
+      closeUnavailabilityForm();
     } catch (submitError) {
       if (submitError instanceof ApiError) {
-        setAvailabilityFormError(mapAvailabilityError(submitError, t));
+        setUnavailabilityFormError(mapUnavailabilityError(submitError, t));
       } else if (submitError instanceof Error) {
-        setAvailabilityFormError(submitError.message);
+        setUnavailabilityFormError(submitError.message);
       } else {
-        setAvailabilityFormError(t("pages.resourceDetails.availability.errors.generic"));
+        setUnavailabilityFormError(t("pages.resourceDetails.unavailability.errors.generic"));
       }
     } finally {
-      setIsAvailabilitySubmitting(false);
+      setIsUnavailabilitySubmitting(false);
     }
   }
 
-  async function handleAvailabilityDelete(slot: ResourceAvailability): Promise<void> {
-    if (!window.confirm(t("pages.resourceDetails.availability.confirmations.delete", { start: formatUtcDateTime(slot.start_at) }))) {
+  async function handleUnavailabilityDelete(slot: ResourceUnavailability): Promise<void> {
+    if (!window.confirm(t("pages.resourceDetails.unavailability.confirmations.delete", { start: formatUtcDateTime(slot.start_at) }))) {
       return;
     }
 
-    setAvailabilityActionError(null);
-    setPendingAvailabilityId(slot.id);
+    setUnavailabilityActionError(null);
+    setPendingUnavailabilityId(slot.id);
 
     try {
-      await deleteResourceAvailability(resourceId, slot.id);
+      await deleteResourceUnavailability(resourceId, slot.id);
       await loadResourceDetails();
 
-      if (editingAvailabilityId === slot.id) {
-        closeAvailabilityForm();
+      if (editingUnavailabilityId === slot.id) {
+        closeUnavailabilityForm();
       }
     } catch (deleteError) {
       if (deleteError instanceof ApiError) {
-        setAvailabilityActionError(mapAvailabilityError(deleteError, t));
+        setUnavailabilityActionError(mapUnavailabilityError(deleteError, t));
       } else if (deleteError instanceof Error) {
-        setAvailabilityActionError(deleteError.message);
+        setUnavailabilityActionError(deleteError.message);
       } else {
-        setAvailabilityActionError(t("pages.resourceDetails.availability.errors.generic"));
+        setUnavailabilityActionError(t("pages.resourceDetails.unavailability.errors.generic"));
       }
     } finally {
-      setPendingAvailabilityId(null);
+      setPendingUnavailabilityId(null);
     }
   }
 
@@ -778,6 +972,54 @@ export function ResourceDetailsPage(): JSX.Element {
     }
   }
 
+  async function handleBatchCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+
+    const validationError = validateBatchBooking();
+    if (validationError) {
+      setBatchFormError(validationError);
+      return;
+    }
+
+    if (!resource) {
+      setBatchFormError(t("pages.resourceDetails.booking.errors.resourceNotFound"));
+      return;
+    }
+
+    if (!batchPreview || !batchPreview.can_create || batchPreview.items.some((item) => !item.valid)) {
+      setBatchFormError(t("pages.resourceDetails.booking.multiple.errors.previewRequired"));
+      return;
+    }
+
+    setBatchFormError(null);
+    setIsBatchSubmitting(true);
+
+    try {
+      const result = await createBatchBookings({
+        resource_id: resource.id,
+        dates: batchSelectedDates,
+        start_time: batchStartTime,
+        end_time: batchEndTime,
+        purpose: purpose.trim() ? purpose.trim() : null,
+      });
+
+      window.alert(t("pages.resourceDetails.booking.multiple.success", { count: result.created_count }));
+      setBatchPreview(null);
+      setBatchSelectedDates([selectedDate]);
+      await Promise.all([loadResourceDetails(), loadBusyIntervalsForSelectedDate()]);
+    } catch (submitError) {
+      if (submitError instanceof ApiError) {
+        setBatchFormError(submitError.message);
+      } else if (submitError instanceof Error) {
+        setBatchFormError(submitError.message);
+      } else {
+        setBatchFormError(t("pages.resourceDetails.booking.errors.generic"));
+      }
+    } finally {
+      setIsBatchSubmitting(false);
+    }
+  }
+
   if (loading) {
     return (
       <section>
@@ -802,7 +1044,7 @@ export function ResourceDetailsPage(): JSX.Element {
     );
   }
 
-  const displayedAvailability = isAdmin ? uniqueAvailability : futureAvailability;
+  const displayedUnavailability = isAdmin ? uniqueUnavailability : futureUnavailability;
   const departmentName =
     resource.department_id !== null
       ? (departmentMap.get(resource.department_id) ?? t("pages.resources.unknownDepartment"))
@@ -942,125 +1184,125 @@ export function ResourceDetailsPage(): JSX.Element {
             )}
           </div>
 
-          <div className="resource-details-card resource-details-card--availability">
+          <div className="resource-details-card resource-details-card--unavailability">
             <div className="resource-details-card__header">
               <div className="resource-details-card__heading">
-                <h3 className="resource-details-card__title">{t("pages.resourceDetails.availability.title")}</h3>
+                <h3 className="resource-details-card__title">{t("pages.resourceDetails.unavailability.title")}</h3>
               </div>
               {isAdmin ? (
-                <button type="button" className="btn btn-secondary" onClick={openAvailabilityCreateForm}>
-                  {t("pages.resourceDetails.availability.actions.create")}
+                <button type="button" className="btn btn-secondary" onClick={openUnavailabilityCreateForm}>
+                  {t("pages.resourceDetails.unavailability.actions.create")}
                 </button>
               ) : null}
             </div>
-            <p className="muted resource-details-hint">{t("pages.resourceDetails.availability.hint")}</p>
+            <p className="muted resource-details-hint">{t("pages.resourceDetails.unavailability.hint")}</p>
 
-            {isAdmin && isAvailabilityFormOpen ? (
-              <form ref={availabilityFormRef} className="resource-availability-form" onSubmit={handleAvailabilitySubmit}>
+            {isAdmin && isUnavailabilityFormOpen ? (
+              <form ref={unavailabilityFormRef} className="resource-unavailability-form" onSubmit={handleUnavailabilitySubmit}>
                 <DateTimeField
-                  label={t("pages.resourceDetails.availability.form.startAt")}
-                  value={availabilityStartAt}
+                  label={t("pages.resourceDetails.unavailability.form.startAt")}
+                  value={unavailabilityStartAt}
                   required
                   onApply={(value) => {
-                    setAvailabilityStartAt(value);
+                    setUnavailabilityStartAt(value);
 
-                    if (availabilityEndAt && value && availabilityEndAt < value) {
-                      setAvailabilityEndAt(value);
+                    if (unavailabilityEndAt && value && unavailabilityEndAt < value) {
+                      setUnavailabilityEndAt(value);
                     }
                   }}
                 />
 
                 <DateTimeField
-                  label={t("pages.resourceDetails.availability.form.endAt")}
-                  value={availabilityEndAt}
-                  minValue={availabilityStartAt || undefined}
+                  label={t("pages.resourceDetails.unavailability.form.endAt")}
+                  value={unavailabilityEndAt}
+                  minValue={unavailabilityStartAt || undefined}
                   required
-                  onApply={setAvailabilityEndAt}
+                  onApply={setUnavailabilityEndAt}
                 />
 
-                <label className="field resource-availability-form__full">
-                  <span>{t("pages.resourceDetails.availability.form.reason")}</span>
+                <label className="field resource-unavailability-form__full">
+                  <span>{t("pages.resourceDetails.unavailability.form.reason")}</span>
                   <textarea
-                    value={availabilityReason}
-                    onChange={(event) => setAvailabilityReason(event.target.value)}
+                    value={unavailabilityReason}
+                    onChange={(event) => setUnavailabilityReason(event.target.value)}
                     rows={3}
-                    placeholder={t("pages.resourceDetails.availability.form.reasonPlaceholder")}
+                    placeholder={t("pages.resourceDetails.unavailability.form.reasonPlaceholder")}
                   />
                 </label>
 
-                {availabilityFormError ? <p className="error-text resource-availability-form__full">{availabilityFormError}</p> : null}
+                {unavailabilityFormError ? <p className="error-text resource-unavailability-form__full">{unavailabilityFormError}</p> : null}
 
-                <div className="resource-availability-form__actions resource-availability-form__full">
-                  <button type="submit" className="btn btn-primary" disabled={isAvailabilitySubmitting}>
-                    {isAvailabilitySubmitting
-                      ? t("pages.resourceDetails.availability.form.submitting")
-                      : availabilityFormMode === "create"
-                        ? t("pages.resourceDetails.availability.form.submitCreate")
-                        : t("pages.resourceDetails.availability.form.submitEdit")}
+                <div className="resource-unavailability-form__actions resource-unavailability-form__full">
+                  <button type="submit" className="btn btn-primary" disabled={isUnavailabilitySubmitting}>
+                    {isUnavailabilitySubmitting
+                      ? t("pages.resourceDetails.unavailability.form.submitting")
+                      : unavailabilityFormMode === "create"
+                        ? t("pages.resourceDetails.unavailability.form.submitCreate")
+                        : t("pages.resourceDetails.unavailability.form.submitEdit")}
                   </button>
-                  <button type="button" className="btn btn-secondary" onClick={closeAvailabilityForm} disabled={isAvailabilitySubmitting}>
-                    {t("pages.resourceDetails.availability.actions.cancel")}
+                  <button type="button" className="btn btn-secondary" onClick={closeUnavailabilityForm} disabled={isUnavailabilitySubmitting}>
+                    {t("pages.resourceDetails.unavailability.actions.cancel")}
                   </button>
                 </div>
               </form>
             ) : null}
 
-            {availabilityActionError ? <p className="error-text">{availabilityActionError}</p> : null}
+            {unavailabilityActionError ? <p className="error-text">{unavailabilityActionError}</p> : null}
 
-            {displayedAvailability.length === 0 ? (
+            {displayedUnavailability.length === 0 ? (
               <p className="muted resource-details-hint">
                 {isAdmin && hasAdditionalRestrictions
-                  ? t("pages.resourceDetails.availability.noFuture.description")
-                  : t("pages.resourceDetails.availability.unrestricted")}
+                  ? t("pages.resourceDetails.unavailability.noFuture.description")
+                  : t("pages.resourceDetails.unavailability.unrestricted")}
               </p>
             ) : (
-              <div className="availability-list" role="list">
-                {displayedAvailability.map((slot) => (
-                  <article key={slot.id} className="availability-card" role="listitem">
-                    <div className="availability-card__time">
+              <div className="unavailability-list" role="list">
+                {displayedUnavailability.map((slot) => (
+                  <article key={slot.id} className="unavailability-card" role="listitem">
+                    <div className="unavailability-card__time">
                       <div>
-                        <strong>{t("pages.resourceDetails.availability.from")}</strong>
+                        <strong>{t("pages.resourceDetails.unavailability.from")}</strong>
                         <div>{formatUtcDateTime(slot.start_at)}</div>
                       </div>
                       <div>
-                        <strong>{t("pages.resourceDetails.availability.to")}</strong>
+                        <strong>{t("pages.resourceDetails.unavailability.to")}</strong>
                         <div>{formatUtcDateTime(slot.end_at)}</div>
                       </div>
                     </div>
                     {slot.reason ? (
-                      <div className="availability-card__meta">
-                        <strong>{t("pages.resourceDetails.availability.reason")}</strong>
+                      <div className="unavailability-card__meta">
+                        <strong>{t("pages.resourceDetails.unavailability.reason")}</strong>
                         <div>{slot.reason}</div>
                       </div>
                     ) : null}
                     {isAdmin ? (
                       <>
-                        <div className="availability-card__meta">
-                          <strong>{t("pages.resourceDetails.availability.createdAt")}</strong>
+                        <div className="unavailability-card__meta">
+                          <strong>{t("pages.resourceDetails.unavailability.createdAt")}</strong>
                           <div>{formatUtcDateTime(slot.created_at)}</div>
                         </div>
-                        <div className="availability-card__meta">
-                          <strong>{t("pages.resourceDetails.availability.updatedAt")}</strong>
+                        <div className="unavailability-card__meta">
+                          <strong>{t("pages.resourceDetails.unavailability.updatedAt")}</strong>
                           <div>{formatUtcDateTime(slot.updated_at)}</div>
                         </div>
-                        <div className="availability-card__actions">
+                        <div className="unavailability-card__actions">
                           <button
                             type="button"
                             className="btn btn-secondary"
-                            onClick={() => openAvailabilityEditForm(slot)}
-                            disabled={pendingAvailabilityId === slot.id}
+                            onClick={() => openUnavailabilityEditForm(slot)}
+                            disabled={pendingUnavailabilityId === slot.id}
                           >
-                            {t("pages.resourceDetails.availability.actions.edit")}
+                            {t("pages.resourceDetails.unavailability.actions.edit")}
                           </button>
                           <button
                             type="button"
                             className="btn btn-secondary"
-                            onClick={() => void handleAvailabilityDelete(slot)}
-                            disabled={pendingAvailabilityId === slot.id}
+                            onClick={() => void handleUnavailabilityDelete(slot)}
+                            disabled={pendingUnavailabilityId === slot.id}
                           >
-                            {pendingAvailabilityId === slot.id
-                              ? t("pages.resourceDetails.availability.actions.deleting")
-                              : t("pages.resourceDetails.availability.actions.delete")}
+                            {pendingUnavailabilityId === slot.id
+                              ? t("pages.resourceDetails.unavailability.actions.deleting")
+                              : t("pages.resourceDetails.unavailability.actions.delete")}
                           </button>
                         </div>
                       </>
@@ -1185,51 +1427,200 @@ export function ResourceDetailsPage(): JSX.Element {
                         end: activeBookingRule.workday_end,
                       })}
                 </p>
-                <form className="form-grid" onSubmit={handleSubmit}>
-                  <DateTimeField
-                    label={t("pages.resourceDetails.booking.fields.startAt")}
-                    value={startAt}
-                    minValue={startAtMin}
-                    required
-                    disabled={bookingDisabled || isSubmitting}
-                    onApply={(value) => {
-                      setStartAt(value);
-                      if (value) {
-                        setSelectedDate(value.slice(0, 10));
-                      }
-
-                      if (endAt && value && endAt < value) {
-                        setEndAt(value);
-                      }
-                    }}
-                  />
-
-                  <DateTimeField
-                    label={t("pages.resourceDetails.booking.fields.endAt")}
-                    value={endAt}
-                    minValue={endAtMin}
-                    required
-                    disabled={bookingDisabled || isSubmitting}
-                    onApply={setEndAt}
-                  />
-
-                  <label className="field">
-                    <span>{t("pages.resourceDetails.booking.fields.purpose")}</span>
-                    <textarea
-                      value={purpose}
-                      onChange={(event) => setPurpose(event.target.value)}
-                      rows={4}
-                      disabled={bookingDisabled || isSubmitting}
-                      placeholder={t("pages.resourceDetails.booking.fields.purposePlaceholder")}
-                    />
-                  </label>
-
-                  {formError ? <p className="error-text">{formError}</p> : null}
-
-                  <button type="submit" className="btn btn-primary" disabled={isSubmitting || bookingDisabled}>
-                    {isSubmitting ? t("pages.resourceDetails.booking.submitting") : t("pages.resourceDetails.booking.submit")}
+                <div className="bookings-tabs" role="tablist" aria-label={t("pages.resourceDetails.booking.mode.label")}>
+                  <button
+                    type="button"
+                    className={`bookings-tab ${bookingMode === "single" ? "active" : ""}`}
+                    onClick={() => setBookingMode("single")}
+                  >
+                    {t("pages.resourceDetails.booking.mode.single")}
                   </button>
-                </form>
+                  <button
+                    type="button"
+                    className={`bookings-tab ${bookingMode === "multiple" ? "active" : ""}`}
+                    onClick={() => setBookingMode("multiple")}
+                  >
+                    {t("pages.resourceDetails.booking.mode.multiple")}
+                  </button>
+                </div>
+
+                {bookingMode === "single" ? (
+                  <form className="form-grid" onSubmit={handleSubmit}>
+                    <DateTimeField
+                      label={t("pages.resourceDetails.booking.fields.startAt")}
+                      value={startAt}
+                      minValue={startAtMin}
+                      required
+                      disabled={bookingDisabled || isSubmitting}
+                      onApply={(value) => {
+                        setStartAt(value);
+                        if (value) {
+                          setSelectedDate(value.slice(0, 10));
+                        }
+
+                        if (endAt && value && endAt < value) {
+                          setEndAt(value);
+                        }
+                      }}
+                    />
+
+                    <DateTimeField
+                      label={t("pages.resourceDetails.booking.fields.endAt")}
+                      value={endAt}
+                      minValue={endAtMin}
+                      required
+                      disabled={bookingDisabled || isSubmitting}
+                      onApply={setEndAt}
+                    />
+
+                    <label className="field">
+                      <span>{t("pages.resourceDetails.booking.fields.purpose")}</span>
+                      <textarea
+                        value={purpose}
+                        onChange={(event) => setPurpose(event.target.value)}
+                        rows={4}
+                        disabled={bookingDisabled || isSubmitting}
+                        placeholder={t("pages.resourceDetails.booking.fields.purposePlaceholder")}
+                      />
+                    </label>
+
+                    {formError ? <p className="error-text">{formError}</p> : null}
+
+                    <button type="submit" className="btn btn-primary" disabled={isSubmitting || bookingDisabled}>
+                      {isSubmitting ? t("pages.resourceDetails.booking.submitting") : t("pages.resourceDetails.booking.submit")}
+                    </button>
+                  </form>
+                ) : (
+                  <form className="form-grid resource-batch-form" onSubmit={handleBatchCreate}>
+                    <div className="resource-batch-form__full">
+                      <div className="resource-batch-form__section">
+                        <span className="resource-batch-form__label">{t("pages.resourceDetails.booking.multiple.quickRanges")}</span>
+                        <div className="resource-day-calendar__quick-actions">
+                          {[3, 5, 7, 14].map((days) => (
+                            <button
+                              key={days}
+                              type="button"
+                              className={`bookings-tab ${selectedBatchPresetDays === days ? "active" : ""}`}
+                              aria-pressed={selectedBatchPresetDays === days}
+                              onClick={() => handleBatchQuickRange(days)}
+                            >
+                              {t("pages.resourceDetails.booking.multiple.rangeDays", { count: days })}
+                            </button>
+                          ))}
+                          <div className="resource-batch-form__picker">
+                            <MultiDatePicker
+                              values={batchSelectedDates}
+                              onToggleDate={toggleBatchDate}
+                              minValue={getLocalDateKey(getCurrentLocalMinute())}
+                              disabled={bookingDisabled || isBatchPreviewLoading || isBatchSubmitting}
+                              ariaLabel={t("pages.resourceDetails.booking.multiple.pickDates")}
+                              triggerLabel={t("pages.resourceDetails.booking.multiple.pickDates")}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="resource-batch-form__full">
+                      <div className="resource-batch-selected-list">
+                        {batchSelectedDates.map((dateKey) => (
+                          <button
+                            key={dateKey}
+                            type="button"
+                            className="resource-batch-chip"
+                            onClick={() => removeBatchDate(dateKey)}
+                          >
+                            <span>{formatDisplayDate(parseLocalDateKey(dateKey))}</span>
+                            <span aria-hidden="true">×</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <label className="field">
+                      <span>{t("pages.resourceDetails.booking.fields.startAt")}</span>
+                      <TimePicker
+                        value={batchStartTime}
+                        onChange={setBatchStartTime}
+                        disabled={bookingDisabled || isBatchPreviewLoading || isBatchSubmitting}
+                        minuteStep={5}
+                        ariaLabel={t("pages.resourceDetails.booking.fields.startAt")}
+                      />
+                    </label>
+
+                    <label className="field">
+                      <span>{t("pages.resourceDetails.booking.fields.endAt")}</span>
+                      <TimePicker
+                        value={batchEndTime}
+                        onChange={setBatchEndTime}
+                        disabled={bookingDisabled || isBatchPreviewLoading || isBatchSubmitting}
+                        minuteStep={5}
+                        ariaLabel={t("pages.resourceDetails.booking.fields.endAt")}
+                      />
+                    </label>
+
+                    <label className="field resource-batch-form__full">
+                      <span>{t("pages.resourceDetails.booking.fields.purpose")}</span>
+                      <textarea
+                        value={purpose}
+                        onChange={(event) => setPurpose(event.target.value)}
+                        rows={4}
+                        disabled={bookingDisabled || isBatchPreviewLoading || isBatchSubmitting}
+                        placeholder={t("pages.resourceDetails.booking.fields.purposePlaceholder")}
+                      />
+                    </label>
+
+                    <div className="resource-batch-form__actions resource-batch-form__full">
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => void handleBatchPreview()}
+                        disabled={bookingDisabled || isBatchPreviewLoading || isBatchSubmitting}
+                      >
+                        {isBatchPreviewLoading
+                          ? t("pages.resourceDetails.booking.multiple.preview.loading")
+                          : t("pages.resourceDetails.booking.multiple.preview.action")}
+                      </button>
+                      <button type="submit" className="btn btn-primary" disabled={!canSubmitBatch || isBatchSubmitting || bookingDisabled}>
+                        {isBatchSubmitting
+                          ? t("pages.resourceDetails.booking.multiple.submitLoading")
+                          : t("pages.resourceDetails.booking.multiple.submit")}
+                      </button>
+                    </div>
+
+                    {batchFormError ? <p className="error-text resource-batch-form__full">{batchFormError}</p> : null}
+
+                    {batchPreview ? (
+                      <div className="resource-batch-preview resource-batch-form__full">
+                        <h4 className="resource-batch-preview__title">{t("pages.resourceDetails.booking.multiple.preview.title")}</h4>
+                        {isBatchPreviewLoading ? (
+                          <LoadingState message={t("pages.resourceDetails.booking.multiple.preview.loading")} />
+                        ) : batchPreview.items.length === 0 ? (
+                          <p className="muted resource-details-hint">{t("pages.resourceDetails.booking.multiple.preview.empty")}</p>
+                        ) : (
+                          <div className="resource-batch-preview__list" role="list">
+                            {batchPreview.items.map((item) => (
+                              <article key={item.date} className="resource-batch-preview__item" role="listitem">
+                                <div>
+                                  <strong>{formatDisplayDate(parseLocalDateKey(item.date))}</strong>
+                                  <div className="muted">{`${batchStartTime}-${batchEndTime}`}</div>
+                                </div>
+                                <div className={`badge ${item.valid ? "badge-success" : "badge-warning"}`}>
+                                  {item.valid
+                                    ? t("pages.resourceDetails.booking.multiple.preview.available")
+                                    : mapBatchPreviewCode(item.error_code)}
+                                </div>
+                                <button type="button" className="btn btn-secondary" onClick={() => removeBatchDate(item.date)}>
+                                  {t("pages.resourceDetails.booking.multiple.preview.remove")}
+                                </button>
+                              </article>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                  </form>
+                )}
               </>
             )}
           </div>
@@ -1238,3 +1629,5 @@ export function ResourceDetailsPage(): JSX.Element {
     </section>
   );
 }
+
+

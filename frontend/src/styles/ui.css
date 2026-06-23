@@ -625,7 +625,7 @@
   overflow-wrap: anywhere;
 }
 
-.availability-list {
+.unavailability-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
@@ -771,7 +771,7 @@
   margin-bottom: 0.2rem;
 }
 
-.availability-card {
+.unavailability-card {
   display: grid;
   gap: 0.75rem;
   padding: 0.85rem 0.95rem;
@@ -781,50 +781,137 @@
   align-content: start;
 }
 
-.availability-card strong {
+.unavailability-card strong {
   display: inline-block;
   margin-bottom: 0.2rem;
 }
 
-.availability-card__time {
+.unavailability-card__time {
   display: grid;
   gap: 0.6rem;
 }
 
-.availability-card__meta {
+.unavailability-card__meta {
   display: grid;
   gap: 0.2rem;
   color: var(--muted);
   font-size: 0.9rem;
 }
 
-.availability-card__actions {
+.unavailability-card__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   grid-column: 1 / -1;
 }
 
-.resource-availability-form {
+.resource-unavailability-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.9rem;
 }
 
-.resource-availability-form .field,
-.resource-availability-form input {
+.resource-unavailability-form .field,
+.resource-unavailability-form input {
   min-width: 0;
   width: 100%;
 }
 
-.resource-availability-form__full {
+.resource-unavailability-form__full {
   grid-column: 1 / -1;
 }
 
-.resource-availability-form__actions {
+.resource-unavailability-form__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
+}
+
+.resource-batch-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.resource-batch-form .field,
+.resource-batch-form textarea,
+.resource-batch-form .picker-field {
+  min-width: 0;
+  width: 100%;
+}
+
+.resource-batch-form__full {
+  grid-column: 1 / -1;
+}
+
+.resource-batch-form__section {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.resource-batch-form__label {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.resource-batch-form__picker {
+  width: min(240px, 100%);
+}
+
+.resource-batch-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.resource-batch-selected-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.resource-batch-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid rgba(11, 114, 133, 0.24);
+  border-radius: 999px;
+  background: rgba(11, 114, 133, 0.08);
+  color: var(--accent-strong);
+  padding: 0.4rem 0.7rem;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.resource-batch-chip:focus-visible {
+  outline: 2px solid rgba(11, 114, 133, 0.35);
+  outline-offset: 2px;
+}
+
+.resource-batch-preview {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.resource-batch-preview__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.resource-batch-preview__list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.resource-batch-preview__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.75rem;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .date-time-field {
@@ -1669,6 +1756,7 @@
 
   .users-form-grid,
   .resources-form-grid,
+  .resource-batch-form,
   .users-list,
   .rules-form-grid,
   .rules-list,
@@ -1740,12 +1828,17 @@
 
   .resource-details-meta,
   .resource-details-rule-meta,
-  .availability-list,
+  .unavailability-list,
   .busy-interval-card,
-  .availability-card,
+  .unavailability-card,
   .date-time-field__grid,
   .time-picker__columns {
     grid-template-columns: 1fr;
+  }
+
+  .resource-batch-preview__item {
+    grid-template-columns: 1fr;
+    align-items: start;
   }
 
   .resource-day-calendar {
@@ -1767,7 +1860,7 @@
 
   .user-card__meta,
   .rule-card__meta,
-  .resource-availability-form {
+  .resource-unavailability-form {
     grid-template-columns: 1fr;
   }
 }

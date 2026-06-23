@@ -24,3 +24,28 @@ export interface CreateBookingPayload {
   end_at: string;
   purpose: string | null;
 }
+
+export interface BatchBookingPayload {
+  resource_id: number;
+  dates: string[];
+  start_time: string;
+  end_time: string;
+  purpose: string | null;
+}
+
+export interface BatchBookingPreviewItem {
+  date: string;
+  valid: boolean;
+  error_code?: string;
+  status?: BookingStatus;
+}
+
+export interface BatchBookingPreviewResponse {
+  can_create: boolean;
+  items: BatchBookingPreviewItem[];
+}
+
+export interface BatchBookingCreateResponse {
+  created_count: number;
+  items: Booking[];
+}

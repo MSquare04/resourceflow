@@ -15,7 +15,6 @@ type Dependencies struct {
 	ResourceCategoryHandler       *handler.ResourceCategoryHandler
 	ResourceTypeHandler           *handler.ResourceTypeHandler
 	ResourceHandler               *handler.ResourceHandler
-	ResourceAvailabilityHandler   *handler.ResourceAvailabilityHandler
 	ResourceUnavailabilityHandler *handler.ResourceUnavailabilityHandler
 	BookingRuleHandler            *handler.BookingRuleHandler
 	BookingHandler                *handler.BookingHandler
@@ -61,12 +60,6 @@ func Register(e *echo.Echo, deps Dependencies) {
 	authorizedGroup.GET("/resources/:id", deps.ResourceHandler.GetByID)
 	authorizedGroup.GET("/resources/:id/busy-intervals", deps.ResourceHandler.ListBusyIntervals)
 
-	adminGroup.POST("/resources/:id/availability", deps.ResourceAvailabilityHandler.Create)
-	adminGroup.PUT("/resources/:id/availability/:availabilityId", deps.ResourceAvailabilityHandler.Update)
-	adminGroup.DELETE("/resources/:id/availability/:availabilityId", deps.ResourceAvailabilityHandler.Delete)
-	authorizedGroup.GET("/resources/:id/availability", deps.ResourceAvailabilityHandler.ListByResourceID)
-	authorizedGroup.GET("/resources/:id/availability/:availabilityId", deps.ResourceAvailabilityHandler.GetByID)
-
 	adminGroup.POST("/resources/:id/unavailability", deps.ResourceUnavailabilityHandler.Create)
 	adminGroup.PUT("/resources/:id/unavailability/:unavailabilityId", deps.ResourceUnavailabilityHandler.Update)
 	adminGroup.DELETE("/resources/:id/unavailability/:unavailabilityId", deps.ResourceUnavailabilityHandler.Delete)
@@ -80,6 +73,8 @@ func Register(e *echo.Echo, deps Dependencies) {
 
 	managerGroup := authorizedGroup.Group("", rfmiddleware.RequireRoles("admin", "manager"))
 	authorizedGroup.POST("/bookings", deps.BookingHandler.Create)
+	authorizedGroup.POST("/bookings/batch/preview", deps.BookingHandler.PreviewBatch)
+	authorizedGroup.POST("/bookings/batch", deps.BookingHandler.CreateBatch)
 	managerGroup.GET("/bookings", deps.BookingHandler.List)
 	authorizedGroup.GET("/bookings/:id", deps.BookingHandler.GetByID)
 	authorizedGroup.GET("/my/bookings", deps.BookingHandler.MyList)

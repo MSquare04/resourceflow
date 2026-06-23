@@ -9,6 +9,31 @@ type CreateBookingRequest struct {
 	Purpose    *string   `json:"purpose"`
 }
 
+type BatchBookingRequest struct {
+	ResourceID int64    `json:"resource_id"`
+	Dates      []string `json:"dates"`
+	StartTime  string   `json:"start_time"`
+	EndTime    string   `json:"end_time"`
+	Purpose    *string  `json:"purpose"`
+}
+
+type BatchBookingPreviewItem struct {
+	Date      string  `json:"date"`
+	Valid     bool    `json:"valid"`
+	ErrorCode *string `json:"error_code,omitempty"`
+	Status    *string `json:"status,omitempty"`
+}
+
+type BatchBookingPreviewResponse struct {
+	CanCreate bool                      `json:"can_create"`
+	Items     []BatchBookingPreviewItem `json:"items"`
+}
+
+type BatchBookingCreateResponse struct {
+	CreatedCount int               `json:"created_count"`
+	Items        []BookingResponse `json:"items"`
+}
+
 type BookingResponse struct {
 	ID               int64      `json:"id"`
 	ResourceID       int64      `json:"resource_id"`

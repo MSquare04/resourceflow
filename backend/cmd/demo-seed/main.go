@@ -40,7 +40,7 @@ func main() {
 		exitWithError(fmt.Errorf("ping postgres: %w", err))
 	}
 
-	resetter := demo.NewResetter(postgres, auth.NewBcryptHasher(), time.Now().UTC())
+	resetter := demo.NewResetter(postgres, auth.NewBcryptHasher(), time.Now().UTC(), cfg.Location)
 	summary, err := resetter.ResetAndSeed(context.Background(), cfg.Env, cfg.Postgres.DBName, password)
 	if err != nil {
 		exitWithError(err)

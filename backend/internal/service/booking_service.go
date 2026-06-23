@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,12 +30,28 @@ var (
 	ErrBookingCompleteTooEarly    = errors.New("booking cannot be completed before end_at")
 	ErrBookingAlreadyEnded        = errors.New("booking has already ended")
 	ErrBusyIntervalRangeInvalid   = errors.New("busy interval range is invalid")
+	ErrBookingBatchTooLarge       = errors.New("booking batch exceeds the maximum allowed dates")
+	ErrBookingBatchDuplicateDate  = errors.New("booking batch contains duplicate dates")
+	ErrBookingBatchInvalid        = errors.New("booking batch contains invalid dates")
 )
 
 var activeBookingStatuses = []string{
 	model.BookingStatusPending,
 	model.BookingStatusConfirmed,
 }
+
+const maxBatchBookingDates = 31
+
+const (
+	batchErrorCodeStartInPast         = dto.ErrorCodeBookingStartInPast
+	batchErrorCodeOutsideWorkday      = dto.ErrorCodeBookingOutsideWorkday
+	batchErrorCodeInUnavailability    = dto.ErrorCodeBookingInUnavailability
+	batchErrorCodeConflict            = dto.ErrorCodeBookingConflict
+	batchErrorCodeResourceUnavailable = dto.ErrorCodeBookingResourceUnavailable
+	batchErrorCodeRuleNotConfigured   = dto.ErrorCodeBookingRuleNotConfigured
+	batchErrorCodeLimitExceeded       = dto.ErrorCodeBookingLimitExceeded
+	batchErrorCodeHorizonExceeded     = dto.ErrorCodeBookingHorizonExceeded
+)
 
 type BookingService struct {
 	bookings       repository.BookingRepository
@@ -86,6 +104,105 @@ func (s *BookingService) WithUnavailabilityChecker(checker bookingUnavailability
 
 func (s *BookingService) Create(ctx context.Context, userID int64, req dto.CreateBookingRequest) (dto.BookingResponse, error) {
 	return s.CreateAt(ctx, userID, req, time.Now().UTC())
+}
+
+func (s *BookingService) PreviewBatch(ctx context.Context, userID int64, req dto.BatchBookingRequest) (dto.BatchBookingPreviewResponse, error) {
+	return s.PreviewBatchAt(ctx, userID, req, time.Now().UTC())
+}
+
+func (s *BookingService) PreviewBatchAt(
+	ctx context.Context,
+	userID int64,
+	req dto.BatchBookingRequest,
+	now time.Time,
+) (dto.BatchBookingPreviewResponse, error) {
+	prepared, err := s.prepareBatchBase(ctx, userID, req)
+	if err != nil {
+		return dto.BatchBookingPreviewResponse{}, err
+	}
+
+	items := s.evaluateBatchCandidates(ctx, s.bookings, prepared, now.UTC())
+	return dto.BatchBookingPreviewResponse{
+		CanCreate: allBatchItemsValid(items),
+		Items:     items,
+	}, nil
+}
+
+func (s *BookingService) CreateBatch(ctx context.Context, userID int64, req dto.BatchBookingRequest) (dto.BatchBookingCreateResponse, error) {
+	return s.CreateBatchAt(ctx, userID, req, time.Now().UTC())
+}
+
+func (s *BookingService) CreateBatchAt(
+	ctx context.Context,
+	userID int64,
+	req dto.BatchBookingRequest,
+	now time.Time,
+) (dto.BatchBookingCreateResponse, error) {
+	prepared, err := s.prepareBatchBase(ctx, userID, req)
+	if err != nil {
+		return dto.BatchBookingCreateResponse{}, err
+	}
+
+	txRepo, ok := s.bookings.(repository.BookingRepositoryTxRunner)
+	if !ok {
+		return dto.BatchBookingCreateResponse{}, fmt.Errorf("booking repository does not support transactions")
+	}
+
+	var created []model.Booking
+	err = txRepo.WithTransaction(ctx, func(repo repository.BookingRepository) error {
+		activeCount, countErr := repo.CountByUserAndStatuses(ctx, userID, activeBookingStatuses)
+		if countErr != nil {
+			return countErr
+		}
+		prepared.ActiveCount = activeCount
+
+		items := s.evaluateBatchCandidates(ctx, repo, prepared, now.UTC())
+		if !allBatchItemsValid(items) {
+			return &BookingBatchValidationError{Items: items}
+		}
+
+		for _, candidate := range prepared.Candidates {
+			booking, createErr := repo.Create(ctx, repository.CreateBookingParams{
+				ResourceID: prepared.Resource.ID,
+				UserID:     userID,
+				StartAt:    candidate.StartAt,
+				EndAt:      candidate.EndAt,
+				Purpose:    trimNullableString(req.Purpose),
+				Status:     prepared.Status,
+			})
+			if createErr != nil {
+				if isExclusionViolation(createErr) {
+					return &BookingBatchValidationError{
+						Items: []dto.BatchBookingPreviewItem{{
+							Date:      candidate.Date,
+							Valid:     false,
+							ErrorCode: stringPtr(batchErrorCodeConflict),
+						}},
+					}
+				}
+				if isForeignKeyViolation(createErr) || isCheckViolation(createErr) {
+					return ErrValidation
+				}
+				return createErr
+			}
+			created = append(created, booking)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return dto.BatchBookingCreateResponse{}, err
+	}
+
+	items := mapBookingResponses(created)
+	if err := s.enrichBookingResponses(ctx, items, false); err != nil {
+		return dto.BatchBookingCreateResponse{}, err
+	}
+
+	return dto.BatchBookingCreateResponse{
+		CreatedCount: len(items),
+		Items:        items,
+	}, nil
 }
 
 func (s *BookingService) CreateAt(
@@ -287,6 +404,257 @@ func (s *BookingService) CreateAt(
 	)
 
 	return mapBookingResponse(booking), nil
+}
+
+type bookingBatchCandidate struct {
+	Date    string
+	StartAt time.Time
+	EndAt   time.Time
+}
+
+type preparedBatchBooking struct {
+	Resource   model.Resource
+	Rule       model.BookingRule
+	Status     string
+	ActiveCount int64
+	Candidates []bookingBatchCandidate
+}
+
+type BookingBatchValidationError struct {
+	Items []dto.BatchBookingPreviewItem
+}
+
+func (e *BookingBatchValidationError) Error() string {
+	return "booking batch contains invalid dates"
+}
+
+func (e *BookingBatchValidationError) FirstErrorCode() string {
+	for _, item := range e.Items {
+		if item.ErrorCode != nil && *item.ErrorCode != "" {
+			return *item.ErrorCode
+		}
+	}
+	return dto.ErrorCodeBookingBatchInvalid
+}
+
+func (s *BookingService) prepareBatchBase(
+	ctx context.Context,
+	userID int64,
+	req dto.BatchBookingRequest,
+) (preparedBatchBooking, error) {
+	if userID <= 0 || req.ResourceID <= 0 {
+		return preparedBatchBooking{}, ErrValidation
+	}
+
+	candidates, err := s.normalizeBatchCandidates(req)
+	if err != nil {
+		return preparedBatchBooking{}, err
+	}
+
+	user, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return preparedBatchBooking{}, ErrValidation
+		}
+		return preparedBatchBooking{}, err
+	}
+	if !user.IsActive {
+		return preparedBatchBooking{}, ErrValidation
+	}
+
+	resource, err := s.resources.FindByID(ctx, req.ResourceID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return preparedBatchBooking{}, ErrResourceNotFound
+		}
+		return preparedBatchBooking{}, err
+	}
+
+	rule, err := s.bookingRules.FindActiveByResourceTypeID(ctx, resource.TypeID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return preparedBatchBooking{}, ErrBookingRuleNotConfigured
+		}
+		return preparedBatchBooking{}, err
+	}
+
+	activeCount, err := s.bookings.CountByUserAndStatuses(ctx, userID, activeBookingStatuses)
+	if err != nil {
+		return preparedBatchBooking{}, err
+	}
+
+	status := model.BookingStatusConfirmed
+	if rule.RequiresApproval {
+		status = model.BookingStatusPending
+	}
+
+	return preparedBatchBooking{
+		Resource:   resource,
+		Rule:       rule,
+		Status:     status,
+		ActiveCount: activeCount,
+		Candidates: candidates,
+	}, nil
+}
+
+func (s *BookingService) normalizeBatchCandidates(req dto.BatchBookingRequest) ([]bookingBatchCandidate, error) {
+	if len(req.Dates) == 0 {
+		return nil, ErrValidation
+	}
+	if len(req.Dates) > maxBatchBookingDates {
+		return nil, ErrBookingBatchTooLarge
+	}
+
+	location := s.appLocation
+	if location == nil {
+		location = time.UTC
+	}
+
+	seen := make(map[string]struct{}, len(req.Dates))
+	candidates := make([]bookingBatchCandidate, 0, len(req.Dates))
+	for _, rawDate := range req.Dates {
+		dateValue := strings.TrimSpace(rawDate)
+		if dateValue == "" {
+			return nil, ErrValidation
+		}
+		if _, exists := seen[dateValue]; exists {
+			return nil, ErrBookingBatchDuplicateDate
+		}
+		seen[dateValue] = struct{}{}
+
+		startAt, endAt, err := parseBatchDateAndTimeRange(location, dateValue, req.StartTime, req.EndTime)
+		if err != nil {
+			return nil, err
+		}
+
+		candidates = append(candidates, bookingBatchCandidate{
+			Date:    dateValue,
+			StartAt: startAt,
+			EndAt:   endAt,
+		})
+	}
+
+	slices.SortFunc(candidates, func(left, right bookingBatchCandidate) int {
+		return strings.Compare(left.Date, right.Date)
+	})
+
+	return candidates, nil
+}
+
+func parseBatchDateAndTimeRange(location *time.Location, dateValue, startTimeValue, endTimeValue string) (time.Time, time.Time, error) {
+	day, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(dateValue), location)
+	if err != nil {
+		return time.Time{}, time.Time{}, ErrValidation
+	}
+
+	startClock, err := parseWorkdayTime(strings.TrimSpace(startTimeValue))
+	if err != nil {
+		return time.Time{}, time.Time{}, ErrValidation
+	}
+	endClock, err := parseWorkdayTime(strings.TrimSpace(endTimeValue))
+	if err != nil {
+		return time.Time{}, time.Time{}, ErrValidation
+	}
+
+	startAt := time.Date(day.Year(), day.Month(), day.Day(), startClock.Hour(), startClock.Minute(), 0, 0, location)
+	endAt := time.Date(day.Year(), day.Month(), day.Day(), endClock.Hour(), endClock.Minute(), 0, 0, location)
+
+	startUTC, endUTC, err := validateBookingRange(startAt.UTC(), endAt.UTC())
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+
+	return startUTC, endUTC, nil
+}
+
+func (s *BookingService) evaluateBatchCandidates(
+	ctx context.Context,
+	repo repository.BookingRepository,
+	prepared preparedBatchBooking,
+	now time.Time,
+) []dto.BatchBookingPreviewItem {
+	items := make([]dto.BatchBookingPreviewItem, 0, len(prepared.Candidates))
+	currentMinute := now.UTC().Truncate(time.Minute)
+	activeCount := prepared.ActiveCount
+
+	for _, candidate := range prepared.Candidates {
+		item := dto.BatchBookingPreviewItem{
+			Date:  candidate.Date,
+			Valid: false,
+		}
+
+		switch {
+		case candidate.StartAt.Before(currentMinute):
+			item.ErrorCode = stringPtr(batchErrorCodeStartInPast)
+		case !prepared.Resource.IsActive || !prepared.Resource.IsBookable:
+			item.ErrorCode = stringPtr(batchErrorCodeResourceUnavailable)
+		case candidate.EndAt.After(now.AddDate(0, 0, int(prepared.Rule.BookingHorizonDays))):
+			item.ErrorCode = stringPtr(batchErrorCodeHorizonExceeded)
+		case !s.durationMatchesRule(candidate.StartAt, candidate.EndAt, prepared.Rule):
+			item.ErrorCode = stringPtr(dto.ErrorCodeValidation)
+		case s.ensureWithinRuleWorkday(candidate.StartAt, candidate.EndAt, prepared.Rule) != nil:
+			item.ErrorCode = stringPtr(batchErrorCodeOutsideWorkday)
+		default:
+			hasUnavailabilityConflict, err := s.unavailability.HasConflict(ctx, prepared.Resource.ID, candidate.StartAt, candidate.EndAt)
+			if err != nil {
+				item.ErrorCode = stringPtr(dto.ErrorCodeValidation)
+				break
+			}
+			if hasUnavailabilityConflict {
+				item.ErrorCode = stringPtr(batchErrorCodeInUnavailability)
+				break
+			}
+
+			hasConflict, err := repo.HasConflict(ctx, prepared.Resource.ID, candidate.StartAt, candidate.EndAt, activeBookingStatuses)
+			if err != nil {
+				item.ErrorCode = stringPtr(dto.ErrorCodeValidation)
+				break
+			}
+			if hasConflict {
+				item.ErrorCode = stringPtr(batchErrorCodeConflict)
+				break
+			}
+
+			if activeCount+1 > int64(prepared.Rule.MaxActiveBookingsPerUser) {
+				item.ErrorCode = stringPtr(batchErrorCodeLimitExceeded)
+				break
+			}
+
+			activeCount++
+			item.Valid = true
+			item.ErrorCode = nil
+			item.Status = stringPtr(prepared.Status)
+		}
+
+		items = append(items, item)
+	}
+
+	return items
+}
+
+func (s *BookingService) durationMatchesRule(startAt, endAt time.Time, rule model.BookingRule) bool {
+	durationMinutes := endAt.Sub(startAt).Minutes()
+	return durationMinutes >= float64(rule.MinDurationMinutes) && durationMinutes <= float64(rule.MaxDurationMinutes)
+}
+
+func allBatchItemsValid(items []dto.BatchBookingPreviewItem) bool {
+	if len(items) == 0 {
+		return false
+	}
+	for _, item := range items {
+		if !item.Valid {
+			return false
+		}
+	}
+	return true
+}
+
+func stringPtr(value string) *string {
+	if value == "" {
+		return nil
+	}
+	result := value
+	return &result
 }
 
 func (s *BookingService) List(ctx context.Context) ([]dto.BookingResponse, error) {

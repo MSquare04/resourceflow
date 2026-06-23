@@ -13,6 +13,10 @@ import (
 	"resourceflow/backend/internal/service"
 )
 
+func timePtr(value time.Time) *time.Time {
+	return &value
+}
+
 func TestBookingService_Create_StatusByRequiresApproval(t *testing.T) {
 	t.Parallel()
 
@@ -38,9 +42,6 @@ func TestBookingService_Create_StatusByRequiresApproval(t *testing.T) {
 			t.Parallel()
 
 			bookings := &bookingRepoMock{
-				isCoveredFn: func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) {
-					return true, nil
-				},
 				countByStatusesFn: func(ctx context.Context, userID int64, statuses []string) (int64, error) {
 					return 0, nil
 				},
@@ -124,7 +125,6 @@ func TestBookingService_Create_Errors(t *testing.T) {
 
 	t.Run("overlap returns conflict", func(t *testing.T) {
 		bookings := &bookingRepoMock{
-			isCoveredFn:       func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) { return true, nil },
 			countByStatusesFn: func(ctx context.Context, userID int64, statuses []string) (int64, error) { return 0, nil },
 			hasConflictFn: func(ctx context.Context, resourceID int64, startAt, endAt time.Time, statuses []string) (bool, error) {
 				return true, nil
@@ -233,9 +233,7 @@ func TestBookingService_Create_Errors(t *testing.T) {
 	})
 
 	t.Run("booking rule violation returns validation", func(t *testing.T) {
-		bookings := &bookingRepoMock{
-			isCoveredFn: func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) { return true, nil },
-		}
+		bookings := &bookingRepoMock{}
 		rules := &bookingRuleRepoMock{
 			findActiveByResourceTypeIDFn: func(ctx context.Context, resourceTypeID int64) (model.BookingRule, error) {
 				return model.BookingRule{
@@ -572,9 +570,6 @@ func TestBookingService_CreateAt_CurrentMinuteSemantics(t *testing.T) {
 		t.Helper()
 
 		bookings := &bookingRepoMock{
-			isCoveredFn: func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error) {
-				return true, nil
-			},
 			countByStatusesFn: func(ctx context.Context, userID int64, statuses []string) (int64, error) {
 				return 0, nil
 			},
@@ -1327,12 +1322,17 @@ func TestBookingService_ProcessExpiredBookings_RemovesExpiredFromBusyIntervals(t
 		t.Fatalf("ProcessExpiredBookings returned error: %v", err)
 	}
 
-	busyIntervals, err := svc.ListBusyIntervalsByResourceID(context.Background(), 10)
+	busyIntervals, err := svc.ListBusyIntervalsByResourceIDInRange(
+		context.Background(),
+		10,
+		timePtr(now.Add(-3*time.Hour)),
+		timePtr(now.Add(5*time.Hour)),
+	)
 	if err != nil {
 		t.Fatalf("ListBusyIntervalsByResourceID returned error: %v", err)
 	}
-	if len(busyIntervals) != 1 {
-		t.Fatalf("unexpected busy intervals count: got %d want 1", len(busyIntervals))
+	if len(busyIntervals) != 2 {
+		t.Fatalf("unexpected busy intervals count: got %d want 2", len(busyIntervals))
 	}
 	for _, interval := range busyIntervals {
 		if !interval.StartAt.After(now) {
@@ -1547,7 +1547,12 @@ func TestBookingService_CancelAt_RemovesBookingFromBusyIntervals(t *testing.T) {
 		t.Fatalf("CancelAt returned error: %v", err)
 	}
 
-	busyIntervals, err := svc.ListBusyIntervalsByResourceID(context.Background(), 10)
+	busyIntervals, err := svc.ListBusyIntervalsByResourceIDInRange(
+		context.Background(),
+		10,
+		timePtr(now),
+		timePtr(now.Add(5*time.Hour)),
+	)
 	if err != nil {
 		t.Fatalf("ListBusyIntervalsByResourceID returned error: %v", err)
 	}

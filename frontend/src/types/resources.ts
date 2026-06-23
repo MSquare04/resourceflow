@@ -40,22 +40,6 @@ export interface ResourceType {
   is_active: boolean;
 }
 
-export interface ResourceAvailability {
-  id: number;
-  resource_id: number;
-  start_at: string;
-  end_at: string;
-  reason?: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ResourceAvailabilityPayload {
-  start_at: string;
-  end_at: string;
-  reason?: string | null;
-}
-
 export interface ResourceUnavailability {
   id: number;
   resource_id: number;

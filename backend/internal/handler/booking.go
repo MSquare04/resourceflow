@@ -77,6 +77,52 @@ func (h *BookingHandler) Create(c *echo.Context) error {
 	})
 }
 
+func (h *BookingHandler) PreviewBatch(c *echo.Context) error {
+	currentUser, ok := auth.GetCurrentUser(c)
+	if !ok {
+		return unauthorizedError(c, "authentication required")
+	}
+	ctx := service.WithRequestID(c.Request().Context(), requestID(c))
+
+	var req dto.BatchBookingRequest
+	if err := c.Bind(&req); err != nil {
+		return validationError(c, "invalid request body")
+	}
+
+	result, err := h.bookings.PreviewBatch(ctx, currentUser.UserID, req)
+	if err != nil {
+		return handleBatchBookingError(c, err, "booking.preview_batch", currentUser.UserID, req.ResourceID)
+	}
+
+	return c.JSON(http.StatusOK, dto.SuccessResponse{
+		Success: true,
+		Data:    result,
+	})
+}
+
+func (h *BookingHandler) CreateBatch(c *echo.Context) error {
+	currentUser, ok := auth.GetCurrentUser(c)
+	if !ok {
+		return unauthorizedError(c, "authentication required")
+	}
+	ctx := service.WithRequestID(c.Request().Context(), requestID(c))
+
+	var req dto.BatchBookingRequest
+	if err := c.Bind(&req); err != nil {
+		return validationError(c, "invalid request body")
+	}
+
+	result, err := h.bookings.CreateBatch(ctx, currentUser.UserID, req)
+	if err != nil {
+		return handleBatchBookingError(c, err, "booking.create_batch", currentUser.UserID, req.ResourceID)
+	}
+
+	return c.JSON(http.StatusCreated, dto.SuccessResponse{
+		Success: true,
+		Data:    result,
+	})
+}
+
 func (h *BookingHandler) List(c *echo.Context) error {
 	currentUser, ok := auth.GetCurrentUser(c)
 	if !ok {
@@ -329,4 +375,54 @@ func forbiddenError(c *echo.Context, message string) error {
 			Message: message,
 		},
 	})
+}
+
+func handleBatchBookingError(c *echo.Context, err error, operation string, userID int64, resourceID int64) error {
+	var batchValidationErr *service.BookingBatchValidationError
+	switch {
+	case errors.As(err, &batchValidationErr):
+		code := batchValidationErr.FirstErrorCode()
+		message := "booking batch contains invalid dates"
+		status := http.StatusBadRequest
+		if code == dto.ErrorCodeBookingConflict || code == dto.ErrorCodeBookingInUnavailability || code == dto.ErrorCodeBookingResourceUnavailable {
+			status = http.StatusConflict
+		}
+		return c.JSON(status, dto.ErrorResponse{
+			Success: false,
+			Error: dto.APIError{
+				Code:    code,
+				Message: message,
+			},
+		})
+	case errors.Is(err, service.ErrBookingBatchTooLarge):
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Success: false,
+			Error: dto.APIError{
+				Code:    dto.ErrorCodeBookingBatchTooLarge,
+				Message: "booking batch exceeds the maximum allowed dates",
+			},
+		})
+	case errors.Is(err, service.ErrBookingBatchDuplicateDate):
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Success: false,
+			Error: dto.APIError{
+				Code:    dto.ErrorCodeBookingBatchDuplicateDate,
+				Message: "booking batch contains duplicate dates",
+			},
+		})
+	case errors.Is(err, service.ErrValidation):
+		return validationError(c, "invalid booking batch payload")
+	case errors.Is(err, service.ErrBookingRuleNotConfigured):
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Success: false,
+			Error: dto.APIError{
+				Code:    dto.ErrorCodeBookingRuleNotConfigured,
+				Message: "active booking rule is not configured",
+			},
+		})
+	case errors.Is(err, service.ErrResourceNotFound):
+		return notFoundError(c, "resource not found")
+	default:
+		return internalError(c, "failed to process booking batch", operation, err, "user_id", userID, "resource_id", resourceID)
+	}
 }

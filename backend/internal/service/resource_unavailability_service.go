@@ -231,3 +231,18 @@ func mapResourceUnavailabilityResponse(item model.ResourceUnavailability) dto.Re
 		UpdatedAt:  item.UpdatedAt.UTC(),
 	}
 }
+
+func validateAvailabilityRange(startAt, endAt time.Time) (time.Time, time.Time, error) {
+	startUTC := startAt.UTC()
+	endUTC := endAt.UTC()
+
+	if startUTC.IsZero() || endUTC.IsZero() {
+		return time.Time{}, time.Time{}, ErrValidation
+	}
+
+	if !startUTC.Before(endUTC) {
+		return time.Time{}, time.Time{}, ErrValidation
+	}
+
+	return startUTC, endUTC, nil
+}

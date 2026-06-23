@@ -76,7 +76,6 @@ func main() {
 	resourceCategoryRepository := repository.NewResourceCategoryRepository(postgres)
 	resourceTypeRepository := repository.NewResourceTypeRepository(postgres)
 	resourceRepository := repository.NewResourceRepository(postgres)
-	resourceAvailabilityRepository := repository.NewResourceAvailabilityRepository(postgres)
 	resourceUnavailabilityRepository := repository.NewResourceUnavailabilityRepository(postgres)
 	bookingRuleRepository := repository.NewBookingRuleRepository(postgres)
 	bookingRepository := repository.NewBookingRepository(postgres)
@@ -91,7 +90,6 @@ func main() {
 	resourceCategoryService := service.NewResourceCategoryService(resourceCategoryRepository)
 	resourceTypeService := service.NewResourceTypeService(resourceTypeRepository)
 	resourceService := service.NewResourceService(resourceRepository, resourceTypeRepository)
-	resourceAvailabilityService := service.NewResourceAvailabilityService(resourceAvailabilityRepository, resourceRepository, bookingRepository)
 	resourceUnavailabilityService := service.NewResourceUnavailabilityService(resourceUnavailabilityRepository, resourceRepository, bookingRepository)
 	bookingRuleService := service.NewBookingRuleService(bookingRuleRepository, resourceTypeRepository)
 	bookingService := service.NewBookingService(bookingRepository, resourceRepository, userRepository, bookingRuleRepository).
@@ -107,7 +105,6 @@ func main() {
 		ResourceCategoryHandler:       handler.NewResourceCategoryHandler(resourceCategoryService),
 		ResourceTypeHandler:           handler.NewResourceTypeHandler(resourceTypeService),
 		ResourceHandler:               handler.NewResourceHandler(resourceService, bookingService),
-		ResourceAvailabilityHandler:   handler.NewResourceAvailabilityHandler(resourceAvailabilityService),
 		ResourceUnavailabilityHandler: handler.NewResourceUnavailabilityHandler(resourceUnavailabilityService),
 		BookingRuleHandler:            handler.NewBookingRuleHandler(bookingRuleService),
 		BookingHandler:                handler.NewBookingHandler(bookingService),
