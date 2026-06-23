@@ -9,6 +9,7 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
 import { PageHeader } from "../components/PageHeader";
+import { TimePicker } from "../components/TimePicker";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import type { BookingRule, BookingRulePayload } from "../types/bookingRules";
 import type { ResourceType } from "../types/resources";
@@ -30,6 +31,9 @@ interface RuleFormState {
   maxDurationMinutes: string;
   maxActiveBookingsPerUser: string;
   bookingHorizonDays: string;
+  workdayStart: string;
+  workdayEnd: string;
+  unrestrictedTime: boolean;
   requiresApproval: boolean;
   isActive: boolean;
 }
@@ -46,6 +50,9 @@ const defaultFormState: RuleFormState = {
   maxDurationMinutes: "",
   maxActiveBookingsPerUser: "",
   bookingHorizonDays: "",
+  workdayStart: "07:00",
+  workdayEnd: "22:00",
+  unrestrictedTime: false,
   requiresApproval: false,
   isActive: true,
 };
@@ -194,6 +201,9 @@ export function BookingRulesPage(): JSX.Element {
       maxDurationMinutes: String(rule.max_duration_minutes),
       maxActiveBookingsPerUser: String(rule.max_active_bookings_per_user),
       bookingHorizonDays: String(rule.booking_horizon_days),
+      workdayStart: rule.workday_start,
+      workdayEnd: rule.workday_end,
+      unrestrictedTime: rule.unrestricted_time,
       requiresApproval: rule.requires_approval,
       isActive: rule.is_active,
     });
@@ -299,6 +309,16 @@ export function BookingRulesPage(): JSX.Element {
       return t("pages.bookingRules.form.errors.maxActivePositive");
     }
 
+    if (!formState.unrestrictedTime) {
+      if (!formState.workdayStart || !formState.workdayEnd) {
+        return t("pages.bookingRules.form.errors.workdayRequired");
+      }
+
+      if (formState.workdayStart >= formState.workdayEnd) {
+        return t("pages.bookingRules.form.errors.invalidWorkdayRange");
+      }
+    }
+
     return null;
   }
 
@@ -319,6 +339,9 @@ export function BookingRulesPage(): JSX.Element {
       max_active_bookings_per_user: Number(formState.maxActiveBookingsPerUser),
       requires_approval: formState.requiresApproval,
       booking_horizon_days: Number(formState.bookingHorizonDays),
+      workday_start: formState.workdayStart,
+      workday_end: formState.workdayEnd,
+      unrestricted_time: formState.unrestrictedTime,
       is_active: formState.isActive,
     };
 
@@ -429,9 +452,54 @@ export function BookingRulesPage(): JSX.Element {
                 onChange={(event) => setFormState((current) => ({ ...current, bookingHorizonDays: event.target.value }))}
               />
             </label>
+
+            {!formState.unrestrictedTime ? (
+              <>
+                <label className="field">
+                  <span>{t("pages.bookingRules.form.fields.workdayStart")}</span>
+                  <TimePicker
+                    value={formState.workdayStart}
+                    onChange={(value) => setFormState((current) => ({ ...current, workdayStart: value }))}
+                    minuteStep={60}
+                    ariaLabel={t("pages.bookingRules.form.fields.workdayStart")}
+                  />
+                </label>
+
+                <label className="field">
+                  <span>{t("pages.bookingRules.form.fields.workdayEnd")}</span>
+                  <TimePicker
+                    value={formState.workdayEnd}
+                    onChange={(value) => setFormState((current) => ({ ...current, workdayEnd: value }))}
+                    minuteStep={60}
+                    ariaLabel={t("pages.bookingRules.form.fields.workdayEnd")}
+                  />
+                </label>
+              </>
+            ) : null}
           </div>
 
           <div className="booking-rule-toggle-grid">
+            <div className="booking-rule-toggle-field">
+              <div className="booking-rule-toggle-field__content">
+                <p className="booking-rule-toggle-field__label">{t("pages.bookingRules.form.fields.unrestrictedTime")}</p>
+                <p className="muted booking-rule-toggle-field__hint">
+                  {t("pages.bookingRules.form.fields.unrestrictedTimeHint")}
+                </p>
+              </div>
+              <ToggleSwitch
+                checked={formState.unrestrictedTime}
+                label={t("pages.bookingRules.form.fields.unrestrictedTime")}
+                onChange={(checked) =>
+                  setFormState((current) => ({
+                    ...current,
+                    unrestrictedTime: checked,
+                    workdayStart: checked ? current.workdayStart : current.workdayStart || "07:00",
+                    workdayEnd: checked ? current.workdayEnd : current.workdayEnd || "22:00",
+                  }))
+                }
+              />
+            </div>
+
             <div className="booking-rule-toggle-field">
               <div className="booking-rule-toggle-field__content">
                 <p className="booking-rule-toggle-field__label">{t("pages.bookingRules.form.fields.requiresApproval")}</p>
@@ -572,6 +640,17 @@ export function BookingRulesPage(): JSX.Element {
                     <div>
                       <dt>{t("pages.bookingRules.fields.bookingHorizonDays")}</dt>
                       <dd>{t("pages.bookingRules.horizon.days", { count: rule.booking_horizon_days })}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("pages.bookingRules.fields.workday")}</dt>
+                      <dd>
+                        {rule.unrestricted_time
+                          ? t("pages.bookingRules.status.unrestrictedTime")
+                          : t("pages.bookingRules.fields.workdayValue", {
+                              start: rule.workday_start,
+                              end: rule.workday_end,
+                            })}
+                      </dd>
                     </div>
                     <div>
                       <dt>{t("pages.bookingRules.fields.createdAt")}</dt>

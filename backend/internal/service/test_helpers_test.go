@@ -346,3 +346,18 @@ func (m *availabilityRepoMock) Delete(ctx context.Context, resourceID int64, id 
 	}
 	return false, errUnexpectedCall
 }
+
+type unavailabilityCheckerMock struct {
+	hasConflictFn func(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error)
+}
+
+func (m *unavailabilityCheckerMock) HasConflict(
+	ctx context.Context,
+	resourceID int64,
+	startAt, endAt time.Time,
+) (bool, error) {
+	if m.hasConflictFn != nil {
+		return m.hasConflictFn(ctx, resourceID, startAt, endAt)
+	}
+	return false, nil
+}

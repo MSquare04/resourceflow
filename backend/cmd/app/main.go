@@ -27,7 +27,7 @@ import (
 	"resourceflow/backend/internal/service"
 )
 
-const expectedMigrationVersion int64 = 10
+const expectedMigrationVersion int64 = 11
 
 func main() {
 	// Local development convenience: load env from .env if present.
@@ -77,6 +77,7 @@ func main() {
 	resourceTypeRepository := repository.NewResourceTypeRepository(postgres)
 	resourceRepository := repository.NewResourceRepository(postgres)
 	resourceAvailabilityRepository := repository.NewResourceAvailabilityRepository(postgres)
+	resourceUnavailabilityRepository := repository.NewResourceUnavailabilityRepository(postgres)
 	bookingRuleRepository := repository.NewBookingRuleRepository(postgres)
 	bookingRepository := repository.NewBookingRepository(postgres)
 	passwordHasher := auth.NewBcryptHasher()
@@ -91,22 +92,26 @@ func main() {
 	resourceTypeService := service.NewResourceTypeService(resourceTypeRepository)
 	resourceService := service.NewResourceService(resourceRepository, resourceTypeRepository)
 	resourceAvailabilityService := service.NewResourceAvailabilityService(resourceAvailabilityRepository, resourceRepository, bookingRepository)
+	resourceUnavailabilityService := service.NewResourceUnavailabilityService(resourceUnavailabilityRepository, resourceRepository, bookingRepository)
 	bookingRuleService := service.NewBookingRuleService(bookingRuleRepository, resourceTypeRepository)
-	bookingService := service.NewBookingService(bookingRepository, resourceRepository, userRepository, bookingRuleRepository)
+	bookingService := service.NewBookingService(bookingRepository, resourceRepository, userRepository, bookingRuleRepository).
+		WithTimeLocation(cfg.Location).
+		WithUnavailabilityChecker(resourceUnavailabilityRepository)
 	bookingExpirationWorker := service.NewBookingExpirationWorker(bookingService, time.Minute)
 
 	router.Register(e, router.Dependencies{
-		HealthHandler:               handler.NewHealthHandler(postgres),
-		AuthHandler:                 handler.NewAuthHandler(authService),
-		DepartmentHandler:           handler.NewDepartmentHandler(departmentService),
-		UserHandler:                 handler.NewUserHandler(userService),
-		ResourceCategoryHandler:     handler.NewResourceCategoryHandler(resourceCategoryService),
-		ResourceTypeHandler:         handler.NewResourceTypeHandler(resourceTypeService),
-		ResourceHandler:             handler.NewResourceHandler(resourceService, bookingService),
-		ResourceAvailabilityHandler: handler.NewResourceAvailabilityHandler(resourceAvailabilityService),
-		BookingRuleHandler:          handler.NewBookingRuleHandler(bookingRuleService),
-		BookingHandler:              handler.NewBookingHandler(bookingService),
-		AuthMiddleware:              rfmiddleware.NewAuthMiddleware(tokenManager, userRepository),
+		HealthHandler:                 handler.NewHealthHandler(postgres),
+		AuthHandler:                   handler.NewAuthHandler(authService),
+		DepartmentHandler:             handler.NewDepartmentHandler(departmentService),
+		UserHandler:                   handler.NewUserHandler(userService),
+		ResourceCategoryHandler:       handler.NewResourceCategoryHandler(resourceCategoryService),
+		ResourceTypeHandler:           handler.NewResourceTypeHandler(resourceTypeService),
+		ResourceHandler:               handler.NewResourceHandler(resourceService, bookingService),
+		ResourceAvailabilityHandler:   handler.NewResourceAvailabilityHandler(resourceAvailabilityService),
+		ResourceUnavailabilityHandler: handler.NewResourceUnavailabilityHandler(resourceUnavailabilityService),
+		BookingRuleHandler:            handler.NewBookingRuleHandler(bookingRuleService),
+		BookingHandler:                handler.NewBookingHandler(bookingService),
+		AuthMiddleware:                rfmiddleware.NewAuthMiddleware(tokenManager, userRepository),
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.HTTP.Host, cfg.HTTP.Port)

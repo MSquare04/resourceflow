@@ -59,7 +59,7 @@ func printSummary(summary demo.Summary) {
 	fmt.Printf("Resource types: %d\n", summary.Counts.Types)
 	fmt.Printf("Booking rules: %d\n", summary.Counts.Rules)
 	fmt.Printf("Resources: %d\n", summary.Counts.Resources)
-	fmt.Printf("Availability intervals: %d\n", summary.Counts.Availability)
+	fmt.Printf("Unavailability intervals: %d\n", summary.Counts.Unavailability)
 	fmt.Printf("Bookings: %d\n", summary.Counts.Bookings)
 	fmt.Printf("\nDemo accounts:\n")
 	for _, account := range summary.Accounts {

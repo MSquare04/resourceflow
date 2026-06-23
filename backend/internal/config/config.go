@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"resourceflow/backend/internal/utils"
 )
@@ -9,6 +10,8 @@ import (
 type Config struct {
 	Env      string
 	LogLevel string
+	Timezone string
+	Location *time.Location
 	HTTP     HTTPConfig
 	Postgres PostgresConfig
 	JWT      JWTConfig
@@ -51,9 +54,18 @@ func Load() Config {
 		jwtExpiresHours = 24
 	}
 
+	timezoneName := utils.GetEnv("APP_TIMEZONE", "UTC")
+	location, err := time.LoadLocation(timezoneName)
+	if err != nil {
+		timezoneName = "UTC"
+		location = time.UTC
+	}
+
 	return Config{
 		Env:      utils.GetEnv("APP_ENV", "development"),
 		LogLevel: utils.GetEnv("LOG_LEVEL", "info"),
+		Timezone: timezoneName,
+		Location: location,
 		HTTP: HTTPConfig{
 			Host: utils.GetEnv("HTTP_HOST", "127.0.0.1"),
 			Port: utils.GetEnvInt("HTTP_PORT", 18080),

@@ -42,14 +42,28 @@ func (h *BookingHandler) Create(c *echo.Context) error {
 			return conflictError(c, "resource is inactive or not bookable")
 		case errors.Is(err, service.ErrResourceNotFound):
 			return notFoundError(c, "resource not found")
-		case errors.Is(err, service.ErrBookingOutOfAvailability):
-			return validationError(c, "booking interval is outside resource availability")
+		case errors.Is(err, service.ErrBookingOutsideWorkday):
+			return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+				Success: false,
+				Error: dto.APIError{
+					Code:    dto.ErrorCodeBookingOutsideWorkday,
+					Message: "booking interval is outside booking rule workday",
+				},
+			})
 		case errors.Is(err, service.ErrBookingRuleNotConfigured):
 			return validationError(c, "active booking rule is not configured")
 		case errors.Is(err, service.ErrBookingLimitExceeded):
 			return validationError(c, "max active bookings per user exceeded")
 		case errors.Is(err, service.ErrBookingHorizonExceeded):
 			return validationError(c, "booking horizon exceeded")
+		case errors.Is(err, service.ErrBookingInUnavailability):
+			return c.JSON(http.StatusConflict, dto.ErrorResponse{
+				Success: false,
+				Error: dto.APIError{
+					Code:    dto.ErrorCodeBookingInUnavailability,
+					Message: "booking interval intersects resource unavailability",
+				},
+			})
 		case errors.Is(err, service.ErrBookingConflict):
 			return conflictError(c, "booking conflicts with existing active booking")
 		default:

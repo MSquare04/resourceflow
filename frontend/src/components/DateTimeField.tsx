@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { DatePicker } from "./DatePicker";
+import { TimePicker } from "./TimePicker";
+
 interface DateTimeFieldProps {
   label: string;
   value: string;
@@ -55,23 +58,26 @@ export function DateTimeField({
       <div className="date-time-field__grid">
         <label className="field">
           <span>{t("common.date")}</span>
-          <input
-            type="date"
+          <DatePicker
             value={draftDate}
-            min={minParts.date || undefined}
-            onChange={(event) => setDraftDate(event.target.value)}
+            minValue={minParts.date || undefined}
+            onChange={setDraftDate}
             required={required}
+            disabled={disabled}
+            ariaLabel={t("common.date")}
           />
         </label>
 
         <label className="field">
           <span>{t("common.time")}</span>
-          <input
-            type="time"
+          <TimePicker
             value={draftTime}
-            min={draftDate && minParts.date === draftDate ? minParts.time || undefined : undefined}
-            onChange={(event) => setDraftTime(event.target.value)}
+            minValue={draftDate && minParts.date === draftDate ? minParts.time || undefined : undefined}
+            onChange={setDraftTime}
             required={required}
+            disabled={disabled}
+            minuteStep={5}
+            ariaLabel={t("common.time")}
           />
         </label>
       </div>

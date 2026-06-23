@@ -16,16 +16,18 @@ import (
 var (
 	ErrBookingNotFound            = errors.New("booking not found")
 	ErrBookingConflict            = errors.New("booking conflict")
-	ErrBookingOutOfAvailability   = errors.New("booking is outside resource availability")
 	ErrBookingRuleNotConfigured   = errors.New("active booking rule not configured")
 	ErrBookingLimitExceeded       = errors.New("max active bookings per user exceeded")
 	ErrBookingHorizonExceeded     = errors.New("booking horizon exceeded")
+	ErrBookingOutsideWorkday      = errors.New("booking interval is outside booking rule workday")
+	ErrBookingInUnavailability    = errors.New("booking interval intersects resource unavailability")
 	ErrBookingForbidden           = errors.New("booking action is forbidden")
 	ErrBookingInvalidStatusAction = errors.New("invalid booking status transition")
 	ErrBookingStartNotFuture      = errors.New("booking start time cannot be earlier than the current minute")
 	ErrBookingResourceUnavailable = errors.New("resource is inactive or not bookable")
 	ErrBookingCompleteTooEarly    = errors.New("booking cannot be completed before end_at")
 	ErrBookingAlreadyEnded        = errors.New("booking has already ended")
+	ErrBusyIntervalRangeInvalid   = errors.New("busy interval range is invalid")
 )
 
 var activeBookingStatuses = []string{
@@ -34,10 +36,22 @@ var activeBookingStatuses = []string{
 }
 
 type BookingService struct {
-	bookings     repository.BookingRepository
-	resources    repository.ResourceRepository
-	users        repository.UserRepository
-	bookingRules repository.BookingRuleRepository
+	bookings       repository.BookingRepository
+	resources      repository.ResourceRepository
+	users          repository.UserRepository
+	bookingRules   repository.BookingRuleRepository
+	appLocation    *time.Location
+	unavailability bookingUnavailabilityChecker
+}
+
+type bookingUnavailabilityChecker interface {
+	HasConflict(ctx context.Context, resourceID int64, startAt, endAt time.Time) (bool, error)
+}
+
+type noopBookingUnavailabilityChecker struct{}
+
+func (noopBookingUnavailabilityChecker) HasConflict(context.Context, int64, time.Time, time.Time) (bool, error) {
+	return false, nil
 }
 
 func NewBookingService(
@@ -47,11 +61,27 @@ func NewBookingService(
 	bookingRules repository.BookingRuleRepository,
 ) *BookingService {
 	return &BookingService{
-		bookings:     bookings,
-		resources:    resources,
-		users:        users,
-		bookingRules: bookingRules,
+		bookings:       bookings,
+		resources:      resources,
+		users:          users,
+		bookingRules:   bookingRules,
+		appLocation:    time.UTC,
+		unavailability: noopBookingUnavailabilityChecker{},
 	}
+}
+
+func (s *BookingService) WithTimeLocation(location *time.Location) *BookingService {
+	if location != nil {
+		s.appLocation = location
+	}
+	return s
+}
+
+func (s *BookingService) WithUnavailabilityChecker(checker bookingUnavailabilityChecker) *BookingService {
+	if checker != nil {
+		s.unavailability = checker
+	}
+	return s
 }
 
 func (s *BookingService) Create(ctx context.Context, userID int64, req dto.CreateBookingRequest) (dto.BookingResponse, error) {
@@ -123,20 +153,6 @@ func (s *BookingService) CreateAt(
 		return dto.BookingResponse{}, ErrBookingResourceUnavailable
 	}
 
-	covered, err := s.bookings.IsCoveredByAvailability(ctx, req.ResourceID, startAt, endAt)
-	if err != nil {
-		return dto.BookingResponse{}, err
-	}
-	if !covered {
-		logBookingRejection(ctx, "booking create rejected: outside resource availability",
-			"resource_id", req.ResourceID,
-			"actor_user_id", userID,
-			"start_at", startAt,
-			"end_at", endAt,
-		)
-		return dto.BookingResponse{}, ErrBookingOutOfAvailability
-	}
-
 	rule, err := s.bookingRules.FindActiveByResourceTypeID(ctx, resource.TypeID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -186,6 +202,33 @@ func (s *BookingService) CreateAt(
 			"rule_booking_horizon_days", rule.BookingHorizonDays,
 		)
 		return dto.BookingResponse{}, ErrBookingHorizonExceeded
+	}
+
+	if err := s.ensureWithinRuleWorkday(startAt, endAt, rule); err != nil {
+		logBookingRejection(ctx, "booking create rejected: outside booking rule workday",
+			"resource_id", req.ResourceID,
+			"actor_user_id", userID,
+			"start_at", startAt,
+			"end_at", endAt,
+			"rule_workday_start", rule.WorkdayStart,
+			"rule_workday_end", rule.WorkdayEnd,
+			"rule_unrestricted_time", rule.UnrestrictedTime,
+		)
+		return dto.BookingResponse{}, err
+	}
+
+	hasUnavailabilityConflict, err := s.unavailability.HasConflict(ctx, req.ResourceID, startAt, endAt)
+	if err != nil {
+		return dto.BookingResponse{}, err
+	}
+	if hasUnavailabilityConflict {
+		logBookingRejection(ctx, "booking create rejected: overlap with resource unavailability",
+			"resource_id", req.ResourceID,
+			"actor_user_id", userID,
+			"start_at", startAt,
+			"end_at", endAt,
+		)
+		return dto.BookingResponse{}, ErrBookingInUnavailability
 	}
 
 	hasConflict, err := s.bookings.HasConflict(ctx, req.ResourceID, startAt, endAt, activeBookingStatuses)
@@ -279,6 +322,14 @@ func (s *BookingService) ListByUserID(ctx context.Context, userID int64) ([]dto.
 }
 
 func (s *BookingService) ListBusyIntervalsByResourceID(ctx context.Context, resourceID int64) ([]dto.ResourceBusyIntervalResponse, error) {
+	return s.ListBusyIntervalsByResourceIDInRange(ctx, resourceID, nil, nil)
+}
+
+func (s *BookingService) ListBusyIntervalsByResourceIDInRange(
+	ctx context.Context,
+	resourceID int64,
+	from, to *time.Time,
+) ([]dto.ResourceBusyIntervalResponse, error) {
 	if resourceID <= 0 {
 		return nil, ErrValidation
 	}
@@ -290,9 +341,12 @@ func (s *BookingService) ListBusyIntervalsByResourceID(ctx context.Context, reso
 		return nil, err
 	}
 
-	now := time.Now().UTC()
-	until := now.AddDate(0, 0, 30)
-	bookings, err := s.bookings.ListBusyIntervalsByResourceID(ctx, resourceID, activeBookingStatuses, now, until)
+	rangeFrom, rangeTo, err := normalizeBusyIntervalRange(from, to)
+	if err != nil {
+		return nil, err
+	}
+
+	bookings, err := s.bookings.ListBusyIntervalsByResourceID(ctx, resourceID, activeBookingStatuses, rangeFrom, rangeTo)
 	if err != nil {
 		return nil, err
 	}
@@ -306,6 +360,29 @@ func (s *BookingService) ListBusyIntervalsByResourceID(ctx context.Context, reso
 	}
 
 	return result, nil
+}
+
+func normalizeBusyIntervalRange(from, to *time.Time) (time.Time, time.Time, error) {
+	if from == nil && to == nil {
+		now := time.Now().UTC()
+		return now, now.AddDate(0, 0, 30), nil
+	}
+
+	if from == nil || to == nil {
+		return time.Time{}, time.Time{}, ErrBusyIntervalRangeInvalid
+	}
+
+	rangeFrom := from.UTC()
+	rangeTo := to.UTC()
+	if !rangeTo.After(rangeFrom) {
+		return time.Time{}, time.Time{}, ErrBusyIntervalRangeInvalid
+	}
+
+	if rangeTo.Sub(rangeFrom) > 31*24*time.Hour {
+		return time.Time{}, time.Time{}, ErrBusyIntervalRangeInvalid
+	}
+
+	return rangeFrom, rangeTo, nil
 }
 
 func (s *BookingService) GetByID(ctx context.Context, id int64, includeUserFullName bool) (dto.BookingResponse, error) {
@@ -676,6 +753,65 @@ func validateBookingRange(startAt, endAt time.Time) (time.Time, time.Time, error
 		return time.Time{}, time.Time{}, ErrValidation
 	}
 	return startAt.UTC(), endAt.UTC(), nil
+}
+
+func (s *BookingService) ensureWithinRuleWorkday(startAt, endAt time.Time, rule model.BookingRule) error {
+	if rule.UnrestrictedTime {
+		return nil
+	}
+
+	location := s.appLocation
+	if location == nil {
+		location = time.UTC
+	}
+
+	localStart := startAt.In(location)
+	localEnd := endAt.In(location)
+	if localStart.Year() != localEnd.Year() || localStart.YearDay() != localEnd.YearDay() {
+		return ErrBookingOutsideWorkday
+	}
+
+	workdayStartValue := effectiveWorkdayTime(rule.WorkdayStart, defaultWorkdayStart)
+	workdayEndValue := effectiveWorkdayTime(rule.WorkdayEnd, defaultWorkdayEnd)
+	workdayStart := time.Date(
+		localStart.Year(),
+		localStart.Month(),
+		localStart.Day(),
+		workdayStartValue.Hour(),
+		workdayStartValue.Minute(),
+		workdayStartValue.Second(),
+		0,
+		location,
+	)
+	workdayEnd := time.Date(
+		localStart.Year(),
+		localStart.Month(),
+		localStart.Day(),
+		workdayEndValue.Hour(),
+		workdayEndValue.Minute(),
+		workdayEndValue.Second(),
+		0,
+		location,
+	)
+
+	if localStart.Before(workdayStart) || localEnd.After(workdayEnd) {
+		return ErrBookingOutsideWorkday
+	}
+
+	return nil
+}
+
+func effectiveWorkdayTime(value time.Time, fallback string) time.Time {
+	if !value.IsZero() {
+		return value
+	}
+
+	parsed, err := parseWorkdayTime(fallback)
+	if err != nil {
+		return value
+	}
+
+	return parsed
 }
 
 func mapBookingResponses(bookings []model.Booking) []dto.BookingResponse {

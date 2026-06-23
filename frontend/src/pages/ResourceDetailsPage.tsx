@@ -7,25 +7,31 @@ import { listBookingRules } from "../api/bookingRules";
 import { ApiError } from "../api/client";
 import { listDepartments } from "../api/departments";
 import {
-  createResourceAvailability,
-  deleteResourceAvailability,
+  createResourceUnavailability as createResourceAvailability,
+  deleteResourceUnavailability as deleteResourceAvailability,
   getResource,
-  listResourceAvailability,
-  listResourceBusyIntervals,
+  listResourceBusyIntervalsInRange,
   listResourceCategories,
+  listResourceUnavailability as listResourceAvailability,
   listResourceTypes,
-  updateResourceAvailability,
+  updateResourceUnavailability as updateResourceAvailability,
 } from "../api/resources";
 import { useRoles } from "../auth/useRoles";
+import { DatePicker } from "../components/DatePicker";
 import { DateTimeField } from "../components/DateTimeField";
-import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
 import { PageHeader } from "../components/PageHeader";
 import type { BookingRule } from "../types/bookingRules";
-import type { Resource, ResourceAvailability, ResourceBusyInterval, ResourceCategory, ResourceType } from "../types/resources";
+import type {
+  Resource,
+  ResourceBusyInterval,
+  ResourceCategory,
+  ResourceType,
+  ResourceUnavailability as ResourceAvailability,
+} from "../types/resources";
 import type { Department } from "../types/users";
-import { formatUtcDateTime } from "../utils/datetime";
+import { formatLocalDate, formatLocalTime, formatUtcDateTime } from "../utils/datetime";
 
 type AvailabilityFormMode = "create" | "edit";
 
@@ -33,6 +39,9 @@ function mapBookingError(error: ApiError, t: ReturnType<typeof useTranslation>["
   if (error.code === "conflict" || error.status === 409) {
     if (error.message === "resource is inactive or not bookable") {
       return t("pages.resourceDetails.booking.errors.resourceUnavailable");
+    }
+    if (error.message === "booking interval intersects resource unavailability") {
+      return t("pages.resourceDetails.booking.errors.unavailabilityConflict");
     }
 
     return t("pages.resourceDetails.booking.errors.conflict");
@@ -46,8 +55,8 @@ function mapBookingError(error: ApiError, t: ReturnType<typeof useTranslation>["
       return t("pages.resourceDetails.booking.errors.startInPast");
     case "resource not found":
       return t("pages.resourceDetails.booking.errors.resourceNotFound");
-    case "booking interval is outside resource availability":
-      return t("pages.resourceDetails.booking.errors.outsideAvailability");
+    case "booking interval is outside booking rule workday":
+      return t("pages.resourceDetails.booking.errors.outsideWorkday");
     case "active booking rule is not configured":
       return t("pages.resourceDetails.booking.errors.ruleNotConfigured");
     case "max active bookings per user exceeded":
@@ -68,11 +77,11 @@ function mapAvailabilityError(error: ApiError, t: ReturnType<typeof useTranslati
 
   const message = error.message;
   switch (message) {
-    case "invalid availability payload":
+    case "invalid resource unavailability payload":
       return t("pages.resourceDetails.availability.errors.invalidPayload");
     case "resource not found":
       return t("pages.resourceDetails.availability.errors.resourceNotFound");
-    case "resource availability not found":
+    case "resource unavailability not found":
       return t("pages.resourceDetails.availability.errors.availabilityNotFound");
     default:
       return message;
@@ -97,6 +106,72 @@ function getCurrentLocalMinute(): Date {
   const current = new Date();
   current.setSeconds(0, 0);
   return current;
+}
+
+function getLocalDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function parseLocalDateKey(value: string): Date {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, (month || 1) - 1, day || 1, 0, 0, 0, 0);
+}
+
+function addMinutes(date: Date, minutes: number): Date {
+  return new Date(date.getTime() + minutes * 60_000);
+}
+
+function intervalsIntersect(startAt: number, endAt: number, otherStartAt: number, otherEndAt: number): boolean {
+  return startAt < otherEndAt && endAt > otherStartAt;
+}
+
+function getEffectiveMinDurationMinutes(rule: BookingRule | null): number {
+  const minDurationMinutes = rule?.min_duration_minutes ?? 0;
+  return minDurationMinutes > 0 ? minDurationMinutes : 30;
+}
+
+function getQuickSelectionStepMinutes(rule: BookingRule | null): number {
+  const minDurationMinutes = rule?.min_duration_minutes ?? 0;
+
+  if (minDurationMinutes >= 15) {
+    return minDurationMinutes;
+  }
+
+  if (minDurationMinutes >= 1) {
+    return 15;
+  }
+
+  return 30;
+}
+
+function parseTimeToMinutes(value: string): number | null {
+  const match = /^(\d{2}):(\d{2})/.exec(value);
+  if (!match) {
+    return null;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    return null;
+  }
+
+  return hours * 60 + minutes;
+}
+
+type DaySlotState = "free" | "busy" | "unavailable" | "past" | "selected";
+
+interface DaySlot {
+  key: string;
+  startAt: Date;
+  endAt: Date;
+  label: string;
+  state: DaySlotState;
+  disabled: boolean;
 }
 
 function EditIcon(): JSX.Element {
@@ -135,16 +210,20 @@ export function ResourceDetailsPage(): JSX.Element {
   const [busyIntervals, setBusyIntervals] = useState<ResourceBusyInterval[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState(() => getLocalDateKey(new Date()));
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
   const [purpose, setPurpose] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [busyLoading, setBusyLoading] = useState(true);
+  const [busyError, setBusyError] = useState<string | null>(null);
   const [isAvailabilityFormOpen, setIsAvailabilityFormOpen] = useState(false);
   const [availabilityFormMode, setAvailabilityFormMode] = useState<AvailabilityFormMode>("create");
   const [editingAvailabilityId, setEditingAvailabilityId] = useState<number | null>(null);
   const [availabilityStartAt, setAvailabilityStartAt] = useState("");
   const [availabilityEndAt, setAvailabilityEndAt] = useState("");
+  const [availabilityReason, setAvailabilityReason] = useState("");
   const [availabilityFormError, setAvailabilityFormError] = useState<string | null>(null);
   const [availabilityActionError, setAvailabilityActionError] = useState<string | null>(null);
   const [isAvailabilitySubmitting, setIsAvailabilitySubmitting] = useState(false);
@@ -157,6 +236,14 @@ export function ResourceDetailsPage(): JSX.Element {
     void loadResourceDetails();
   }, [isAdmin, resourceId]);
 
+  useEffect(() => {
+    if (!Number.isInteger(resourceId) || resourceId <= 0) {
+      return;
+    }
+
+    void loadBusyIntervalsForSelectedDate();
+  }, [resourceId, selectedDate]);
+
   async function loadResourceDetails(): Promise<void> {
     if (!Number.isInteger(resourceId) || resourceId <= 0) {
       setError(t("pages.resourceDetails.errors.invalidResource"));
@@ -168,12 +255,11 @@ export function ResourceDetailsPage(): JSX.Element {
     setError(null);
 
     try {
-      const [resourceData, categoriesData, typesData, availabilityData, busyIntervalsData, bookingRulesData] = await Promise.all([
+      const [resourceData, categoriesData, typesData, availabilityData, bookingRulesData] = await Promise.all([
         getResource(resourceId),
         listResourceCategories(),
         listResourceTypes(),
         listResourceAvailability(resourceId),
-        listResourceBusyIntervals(resourceId),
         listBookingRules(),
       ]);
       let departmentsData: Department[] = [];
@@ -191,12 +277,33 @@ export function ResourceDetailsPage(): JSX.Element {
       setTypes(typesData);
       setDepartments(departmentsData);
       setAvailability(availabilityData);
-      setBusyIntervals(busyIntervalsData);
       setBookingRules(bookingRulesData);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : t("errors.generic"));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadBusyIntervalsForSelectedDate(): Promise<void> {
+    const dayStart = parseLocalDateKey(selectedDate);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+
+    setBusyLoading(true);
+    setBusyError(null);
+
+    try {
+      const data = await listResourceBusyIntervalsInRange(resourceId, {
+        from: dayStart.toISOString(),
+        to: dayEnd.toISOString(),
+      });
+      setBusyIntervals(data);
+    } catch (loadError) {
+      setBusyIntervals([]);
+      setBusyError(loadError instanceof Error ? loadError.message : t("errors.generic"));
+    } finally {
+      setBusyLoading(false);
     }
   }
 
@@ -254,8 +361,27 @@ export function ResourceDetailsPage(): JSX.Element {
       .sort((left, right) => right.id - left.id)[0] ?? null;
   }, [bookingRules, resource]);
   const hasAdditionalRestrictions = uniqueAvailability.length > 0;
-  const hasFutureRestrictedWindow = futureAvailability.length > 0;
-  const bookingDisabled = !activeBookingRule || (hasAdditionalRestrictions && !hasFutureRestrictedWindow);
+  const bookingDisabled = !activeBookingRule || !resource?.is_active || !resource?.is_bookable;
+  const bookingFormAvailable = !!activeBookingRule && !!resource?.is_active && !!resource?.is_bookable;
+  const selectedDayStart = useMemo(() => parseLocalDateKey(selectedDate), [selectedDate]);
+  const selectedDayEnd = useMemo(() => {
+    const nextDay = new Date(selectedDayStart);
+    nextDay.setDate(nextDay.getDate() + 1);
+    return nextDay;
+  }, [selectedDayStart]);
+  const selectedDayLabel = useMemo(() => formatLocalDate(selectedDayStart), [selectedDayStart]);
+  const workdayStartMinutes = useMemo(
+    () => (activeBookingRule && !activeBookingRule.unrestricted_time ? parseTimeToMinutes(activeBookingRule.workday_start) : 0),
+    [activeBookingRule],
+  );
+  const workdayEndMinutes = useMemo(
+    () => (activeBookingRule && !activeBookingRule.unrestricted_time ? parseTimeToMinutes(activeBookingRule.workday_end) : 24 * 60),
+    [activeBookingRule],
+  );
+  const hasValidWorkdayWindow =
+    activeBookingRule === null ||
+    activeBookingRule.unrestricted_time ||
+    (workdayStartMinutes !== null && workdayEndMinutes !== null && workdayStartMinutes < workdayEndMinutes);
 
   const endAtMin = useMemo(() => {
     if (!startAt) {
@@ -264,6 +390,135 @@ export function ResourceDetailsPage(): JSX.Element {
 
     return startAt > startAtMin ? startAt : startAtMin;
   }, [startAt, startAtMin]);
+
+  function isRangeInsideWorkday(startAtMs: number, endAtMs: number): boolean {
+    if (!activeBookingRule || activeBookingRule.unrestricted_time) {
+      return true;
+    }
+
+    if (workdayStartMinutes === null || workdayEndMinutes === null || workdayStartMinutes >= workdayEndMinutes) {
+      return false;
+    }
+
+    const startValue = new Date(startAtMs);
+    const endValue = new Date(endAtMs);
+    if (
+      startValue.getFullYear() !== endValue.getFullYear() ||
+      startValue.getMonth() !== endValue.getMonth() ||
+      startValue.getDate() !== endValue.getDate()
+    ) {
+      return false;
+    }
+
+    const startMinutes = startValue.getHours() * 60 + startValue.getMinutes();
+    const endMinutes = endValue.getHours() * 60 + endValue.getMinutes();
+    return startMinutes >= workdayStartMinutes && endMinutes <= workdayEndMinutes;
+  }
+
+  function intersectsAdditionalRestrictions(startAtMs: number, endAtMs: number): boolean {
+    return uniqueAvailability.some((slot) => {
+      const slotStart = new Date(slot.start_at).getTime();
+      const slotEnd = new Date(slot.end_at).getTime();
+      return intervalsIntersect(startAtMs, endAtMs, slotStart, slotEnd);
+    });
+  }
+
+  function intersectsBusyIntervals(startAtMs: number, endAtMs: number): boolean {
+    return visibleBusyIntervals.some((interval) => {
+      const intervalStart = new Date(interval.start_at).getTime();
+      const intervalEnd = new Date(interval.end_at).getTime();
+
+      return intervalsIntersect(startAtMs, endAtMs, intervalStart, intervalEnd);
+    });
+  }
+
+  const selectedRange = useMemo(() => {
+    const startValue = startAt ? new Date(startAt) : null;
+    const endValue = endAt ? new Date(endAt) : null;
+
+    if (!startValue || !endValue || Number.isNaN(startValue.getTime()) || Number.isNaN(endValue.getTime()) || startValue >= endValue) {
+      return null;
+    }
+
+    return {
+      startAtMs: startValue.getTime(),
+      endAtMs: endValue.getTime(),
+    };
+  }, [endAt, startAt]);
+
+  const daySlots = useMemo((): DaySlot[] => {
+    const slots: DaySlot[] = [];
+    const currentMinuteMs = getCurrentLocalMinute().getTime();
+    const minDurationMinutes = getEffectiveMinDurationMinutes(activeBookingRule);
+    const quickSelectionStepMinutes = getQuickSelectionStepMinutes(activeBookingRule);
+    const selectedDayEndMs = selectedDayEnd.getTime();
+    const isToday = selectedDate === getLocalDateKey(new Date());
+    const slotWindowStartMinutes =
+      activeBookingRule && !activeBookingRule.unrestricted_time && workdayStartMinutes !== null ? workdayStartMinutes : 0;
+    const slotWindowEndMinutes =
+      activeBookingRule && !activeBookingRule.unrestricted_time && workdayEndMinutes !== null ? workdayEndMinutes : 24 * 60;
+
+    for (
+      let offsetMinutes = slotWindowStartMinutes;
+      offsetMinutes < slotWindowEndMinutes;
+      offsetMinutes += quickSelectionStepMinutes
+    ) {
+      const slotStart = addMinutes(selectedDayStart, offsetMinutes);
+      const candidateEnd = addMinutes(slotStart, minDurationMinutes);
+      const slotStartMs = slotStart.getTime();
+      const candidateEndMs = candidateEnd.getTime();
+      const isPast = slotStartMs < currentMinuteMs;
+
+      if (isToday && isPast) {
+        continue;
+      }
+
+      const isSelected =
+        selectedRange !== null &&
+        slotStartMs === selectedRange.startAtMs &&
+        candidateEndMs === selectedRange.endAtMs;
+      const isBusy = intersectsBusyIntervals(slotStartMs, candidateEndMs);
+      const canFitRuleDuration =
+        hasValidWorkdayWindow &&
+        candidateEndMs <= selectedDayEndMs &&
+        isRangeInsideWorkday(slotStartMs, candidateEndMs) &&
+        slotStartMs >= currentMinuteMs &&
+        !intersectsAdditionalRestrictions(slotStartMs, candidateEndMs) &&
+        !intersectsBusyIntervals(slotStartMs, candidateEndMs);
+
+      let state: DaySlotState = "free";
+      if (isSelected) {
+        state = "selected";
+      } else if (isPast) {
+        state = "past";
+      } else if (isBusy) {
+        state = "busy";
+      } else if (!canFitRuleDuration) {
+        state = "unavailable";
+      }
+
+      slots.push({
+        key: `${selectedDate}-${offsetMinutes}`,
+        startAt: slotStart,
+        endAt: candidateEnd,
+        label: formatLocalTime(slotStart),
+        state,
+        disabled: state !== "free",
+      });
+    }
+
+    return slots;
+  }, [
+    activeBookingRule,
+    hasValidWorkdayWindow,
+    selectedDate,
+    selectedDayEnd,
+    selectedDayStart,
+    selectedRange,
+    visibleBusyIntervals,
+    workdayEndMinutes,
+    workdayStartMinutes,
+  ]);
 
   function validateDateRange(): string | null {
     if (!startAt || !endAt) {
@@ -285,31 +540,41 @@ export function ResourceDetailsPage(): JSX.Element {
       return t("pages.resourceDetails.booking.errors.invalidRange");
     }
 
-    if (hasAdditionalRestrictions) {
-      const isInsideAvailability = futureAvailability.some((slot) => {
-        const slotStart = new Date(slot.start_at).getTime();
-        const slotEnd = new Date(slot.end_at).getTime();
-
-        return startValue.getTime() >= slotStart && endValue.getTime() <= slotEnd;
-      });
-
-      if (!isInsideAvailability) {
-        return t("pages.resourceDetails.booking.errors.outsideAvailability");
-      }
+    if (!isRangeInsideWorkday(startValue.getTime(), endValue.getTime())) {
+      return t("pages.resourceDetails.booking.errors.outsideWorkday");
     }
 
-    const intersectsBusyInterval = visibleBusyIntervals.some((interval) => {
-      const intervalStart = new Date(interval.start_at).getTime();
-      const intervalEnd = new Date(interval.end_at).getTime();
+    if (intersectsAdditionalRestrictions(startValue.getTime(), endValue.getTime())) {
+      return t("pages.resourceDetails.booking.errors.unavailabilityConflict");
+    }
 
-      return startValue.getTime() < intervalEnd && endValue.getTime() > intervalStart;
-    });
-
-    if (intersectsBusyInterval) {
+    if (intersectsBusyIntervals(startValue.getTime(), endValue.getTime())) {
       return t("pages.resourceDetails.booking.errors.busyConflict");
     }
 
     return null;
+  }
+
+  function handleQuickDateSelect(offsetDays: number): void {
+    const nextDate = new Date();
+    nextDate.setDate(nextDate.getDate() + offsetDays);
+    nextDate.setHours(0, 0, 0, 0);
+    setSelectedDate(getLocalDateKey(nextDate));
+  }
+
+  function handleSlotSelect(slot: DaySlot): void {
+    if (!activeBookingRule || slot.disabled) {
+      return;
+    }
+
+    const minDurationMinutes = getEffectiveMinDurationMinutes(activeBookingRule);
+    const nextStartAt = toDateTimeLocalValue(slot.startAt);
+    const nextEndAt = toDateTimeLocalValue(addMinutes(slot.startAt, minDurationMinutes));
+
+    setSelectedDate(getLocalDateKey(slot.startAt));
+    setStartAt(nextStartAt);
+    setEndAt(nextEndAt);
+    setFormError(null);
   }
 
   function resetAvailabilityForm(): void {
@@ -317,6 +582,7 @@ export function ResourceDetailsPage(): JSX.Element {
     setEditingAvailabilityId(null);
     setAvailabilityStartAt("");
     setAvailabilityEndAt("");
+    setAvailabilityReason("");
     setAvailabilityFormError(null);
   }
 
@@ -335,6 +601,7 @@ export function ResourceDetailsPage(): JSX.Element {
     setEditingAvailabilityId(slot.id);
     setAvailabilityStartAt(toLocalInputValue(slot.start_at));
     setAvailabilityEndAt(toLocalInputValue(slot.end_at));
+    setAvailabilityReason(slot.reason ?? "");
     setAvailabilityFormError(null);
     setIsAvailabilityFormOpen(true);
   }
@@ -419,6 +686,7 @@ export function ResourceDetailsPage(): JSX.Element {
       const payload = {
         start_at: new Date(availabilityStartAt).toISOString(),
         end_at: new Date(availabilityEndAt).toISOString(),
+        reason: availabilityReason.trim() || null,
       };
 
       if (availabilityFormMode === "create") {
@@ -657,6 +925,17 @@ export function ResourceDetailsPage(): JSX.Element {
                       : t("pages.resourceDetails.rule.values.approvalNotRequired")}
                   </dd>
                 </div>
+                <div className="resource-details-rule-meta__item">
+                  <dt className="resource-details-rule-meta__label">{t("pages.resourceDetails.rule.fields.workday")}</dt>
+                  <dd className="resource-details-rule-meta__value">
+                    {activeBookingRule.unrestricted_time
+                      ? t("pages.resourceDetails.rule.values.unrestrictedTime")
+                      : t("pages.resourceDetails.rule.values.workdayValue", {
+                          start: activeBookingRule.workday_start,
+                          end: activeBookingRule.workday_end,
+                        })}
+                  </dd>
+                </div>
               </dl>
             ) : (
               <p className="muted resource-details-hint">{t("pages.resourceDetails.rule.missing")}</p>
@@ -699,6 +978,16 @@ export function ResourceDetailsPage(): JSX.Element {
                   onApply={setAvailabilityEndAt}
                 />
 
+                <label className="field resource-availability-form__full">
+                  <span>{t("pages.resourceDetails.availability.form.reason")}</span>
+                  <textarea
+                    value={availabilityReason}
+                    onChange={(event) => setAvailabilityReason(event.target.value)}
+                    rows={3}
+                    placeholder={t("pages.resourceDetails.availability.form.reasonPlaceholder")}
+                  />
+                </label>
+
                 {availabilityFormError ? <p className="error-text resource-availability-form__full">{availabilityFormError}</p> : null}
 
                 <div className="resource-availability-form__actions resource-availability-form__full">
@@ -720,7 +1009,7 @@ export function ResourceDetailsPage(): JSX.Element {
 
             {displayedAvailability.length === 0 ? (
               <p className="muted resource-details-hint">
-                {hasAdditionalRestrictions
+                {isAdmin && hasAdditionalRestrictions
                   ? t("pages.resourceDetails.availability.noFuture.description")
                   : t("pages.resourceDetails.availability.unrestricted")}
               </p>
@@ -738,6 +1027,12 @@ export function ResourceDetailsPage(): JSX.Element {
                         <div>{formatUtcDateTime(slot.end_at)}</div>
                       </div>
                     </div>
+                    {slot.reason ? (
+                      <div className="availability-card__meta">
+                        <strong>{t("pages.resourceDetails.availability.reason")}</strong>
+                        <div>{slot.reason}</div>
+                      </div>
+                    ) : null}
                     {isAdmin ? (
                       <>
                         <div className="availability-card__meta">
@@ -782,83 +1077,161 @@ export function ResourceDetailsPage(): JSX.Element {
                 <h3 className="resource-details-card__title">{t("pages.resourceDetails.busy.title")}</h3>
               </div>
             </div>
-            <p className="muted resource-details-hint">{t("pages.resourceDetails.busy.hint")}</p>
+            <div className="resource-day-calendar__controls">
+              <div className="resource-day-calendar__quick-actions" role="group" aria-label={t("pages.resourceDetails.busy.quickActions")}>
+                <button
+                  type="button"
+                  className={`bookings-tab ${selectedDate === getLocalDateKey(new Date()) ? "active" : ""}`}
+                  onClick={() => handleQuickDateSelect(0)}
+                >
+                  {t("pages.resourceDetails.busy.today")}
+                </button>
+                <button
+                  type="button"
+                  className={`bookings-tab ${selectedDate === getLocalDateKey(addMinutes(new Date(), 24 * 60)) ? "active" : ""}`}
+                  onClick={() => handleQuickDateSelect(1)}
+                >
+                  {t("pages.resourceDetails.busy.tomorrow")}
+                </button>
+                <button
+                  type="button"
+                  className={`bookings-tab ${selectedDate === getLocalDateKey(addMinutes(new Date(), 48 * 60)) ? "active" : ""}`}
+                  onClick={() => handleQuickDateSelect(2)}
+                >
+                  {t("pages.resourceDetails.busy.dayAfterTomorrow")}
+                </button>
+              </div>
 
-            {visibleBusyIntervals.length === 0 ? (
-              <EmptyState title={t("pages.resourceDetails.busy.empty.title")} />
+              <label className="field resource-day-calendar__date-field">
+                <span>{t("pages.resourceDetails.busy.selectedDate")}</span>
+                <DatePicker
+                  value={selectedDate}
+                  onChange={(value) => {
+                    if (value) {
+                      setSelectedDate(value);
+                    }
+                  }}
+                  ariaLabel={t("pages.resourceDetails.busy.selectedDate")}
+                />
+              </label>
+            </div>
+
+            <p className="muted resource-details-hint">
+              {t("pages.resourceDetails.busy.hint", { date: selectedDayLabel })}
+            </p>
+
+            <div className="resource-day-calendar__legend" aria-label={t("pages.resourceDetails.busy.legend")}>
+              <span className="resource-day-calendar__legend-item">
+                <span className="resource-day-calendar__legend-dot is-free" aria-hidden="true" />
+                {t("pages.resourceDetails.busy.states.free")}
+              </span>
+              <span className="resource-day-calendar__legend-item">
+                <span className="resource-day-calendar__legend-dot is-selected" aria-hidden="true" />
+                {t("pages.resourceDetails.busy.states.selected")}
+              </span>
+              <span className="resource-day-calendar__legend-item">
+                <span className="resource-day-calendar__legend-dot is-busy" aria-hidden="true" />
+                {t("pages.resourceDetails.busy.states.busy")}
+              </span>
+              <span className="resource-day-calendar__legend-item">
+                <span className="resource-day-calendar__legend-dot is-unavailable" aria-hidden="true" />
+                {t("pages.resourceDetails.busy.states.unavailable")}
+              </span>
+              <span className="resource-day-calendar__legend-item">
+                <span className="resource-day-calendar__legend-dot is-past" aria-hidden="true" />
+                {t("pages.resourceDetails.busy.states.past")}
+              </span>
+            </div>
+
+            {busyLoading ? (
+              <LoadingState message={t("pages.resourceDetails.busy.loading")} />
+            ) : busyError ? (
+              <ErrorState message={busyError} onRetry={() => void loadBusyIntervalsForSelectedDate()} />
             ) : (
-              <div className="busy-intervals-list" role="list">
-                {visibleBusyIntervals.map((interval) => (
-                  <article key={`${interval.start_at}-${interval.end_at}`} className="busy-interval-card" role="listitem">
-                    <div>
-                      <strong>{t("pages.resourceDetails.busy.from")}</strong>
-                      <div>{formatUtcDateTime(interval.start_at)}</div>
-                    </div>
-                    <div>
-                      <strong>{t("pages.resourceDetails.busy.to")}</strong>
-                      <div>{formatUtcDateTime(interval.end_at)}</div>
-                    </div>
-                  </article>
+              <div className="resource-day-calendar" role="grid" aria-label={t("pages.resourceDetails.busy.calendarLabel", { date: selectedDayLabel })}>
+                {daySlots.map((slot) => (
+                  <button
+                    key={slot.key}
+                    type="button"
+                    role="gridcell"
+                    className={`resource-day-calendar__slot is-${slot.state}`}
+                    onClick={() => handleSlotSelect(slot)}
+                    disabled={slot.disabled || bookingDisabled || isSubmitting}
+                    aria-label={t("pages.resourceDetails.busy.slotLabel", { time: slot.label, state: t(`pages.resourceDetails.busy.states.${slot.state}`) })}
+                  >
+                    {slot.label}
+                  </button>
                 ))}
               </div>
             )}
+
           </div>
 
           <div className="resource-details-card">
             <h3 className="resource-details-card__title">{t("pages.resourceDetails.booking.title")}</h3>
-            {!activeBookingRule ? (
-              <p className="muted resource-details-hint">{t("pages.resourceDetails.booking.disabledNoRule")}</p>
-            ) : bookingDisabled ? (
-              <p className="muted resource-details-hint">{t("pages.resourceDetails.booking.disabledNoAvailability")}</p>
+            {!bookingFormAvailable ? (
+              !activeBookingRule ? (
+                <p className="muted resource-details-hint">{t("pages.resourceDetails.booking.disabledNoRule")}</p>
+              ) : !resource.is_active || !resource.is_bookable ? (
+                <p className="muted resource-details-hint">{t("pages.resourceDetails.booking.errors.resourceUnavailable")}</p>
+              ) : null
             ) : (
-              <p className="muted resource-details-hint">
-                {hasAdditionalRestrictions
-                  ? t("pages.resourceDetails.availability.hint")
-                  : t("pages.resourceDetails.booking.unrestrictedHint")}
-              </p>
+              <>
+                <p className="muted resource-details-hint">
+                  {activeBookingRule.unrestricted_time
+                    ? t("pages.resourceDetails.booking.unrestrictedHint")
+                    : t("pages.resourceDetails.rule.values.workdayValue", {
+                        start: activeBookingRule.workday_start,
+                        end: activeBookingRule.workday_end,
+                      })}
+                </p>
+                <form className="form-grid" onSubmit={handleSubmit}>
+                  <DateTimeField
+                    label={t("pages.resourceDetails.booking.fields.startAt")}
+                    value={startAt}
+                    minValue={startAtMin}
+                    required
+                    disabled={bookingDisabled || isSubmitting}
+                    onApply={(value) => {
+                      setStartAt(value);
+                      if (value) {
+                        setSelectedDate(value.slice(0, 10));
+                      }
+
+                      if (endAt && value && endAt < value) {
+                        setEndAt(value);
+                      }
+                    }}
+                  />
+
+                  <DateTimeField
+                    label={t("pages.resourceDetails.booking.fields.endAt")}
+                    value={endAt}
+                    minValue={endAtMin}
+                    required
+                    disabled={bookingDisabled || isSubmitting}
+                    onApply={setEndAt}
+                  />
+
+                  <label className="field">
+                    <span>{t("pages.resourceDetails.booking.fields.purpose")}</span>
+                    <textarea
+                      value={purpose}
+                      onChange={(event) => setPurpose(event.target.value)}
+                      rows={4}
+                      disabled={bookingDisabled || isSubmitting}
+                      placeholder={t("pages.resourceDetails.booking.fields.purposePlaceholder")}
+                    />
+                  </label>
+
+                  {formError ? <p className="error-text">{formError}</p> : null}
+
+                  <button type="submit" className="btn btn-primary" disabled={isSubmitting || bookingDisabled}>
+                    {isSubmitting ? t("pages.resourceDetails.booking.submitting") : t("pages.resourceDetails.booking.submit")}
+                  </button>
+                </form>
+              </>
             )}
-            <form className="form-grid" onSubmit={handleSubmit}>
-              <DateTimeField
-                label={t("pages.resourceDetails.booking.fields.startAt")}
-                value={startAt}
-                minValue={startAtMin}
-                required
-                disabled={bookingDisabled || isSubmitting}
-                onApply={(value) => {
-                  setStartAt(value);
-
-                  if (endAt && value && endAt < value) {
-                    setEndAt(value);
-                  }
-                }}
-              />
-
-              <DateTimeField
-                label={t("pages.resourceDetails.booking.fields.endAt")}
-                value={endAt}
-                minValue={endAtMin}
-                required
-                disabled={bookingDisabled || isSubmitting}
-                onApply={setEndAt}
-              />
-
-              <label className="field">
-                <span>{t("pages.resourceDetails.booking.fields.purpose")}</span>
-                <textarea
-                  value={purpose}
-                  onChange={(event) => setPurpose(event.target.value)}
-                  rows={4}
-                  disabled={bookingDisabled || isSubmitting}
-                  placeholder={t("pages.resourceDetails.booking.fields.purposePlaceholder")}
-                />
-              </label>
-
-              {formError ? <p className="error-text">{formError}</p> : null}
-
-              <button type="submit" className="btn btn-primary" disabled={isSubmitting || bookingDisabled}>
-                {isSubmitting ? t("pages.resourceDetails.booking.submitting") : t("pages.resourceDetails.booking.submit")}
-              </button>
-            </form>
           </div>
         </div>
       </div>
