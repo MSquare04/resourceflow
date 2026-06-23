@@ -827,6 +827,93 @@
   gap: 0.75rem;
 }
 
+.resource-batch-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.resource-batch-form .field,
+.resource-batch-form textarea,
+.resource-batch-form .picker-field {
+  min-width: 0;
+  width: 100%;
+}
+
+.resource-batch-form__full {
+  grid-column: 1 / -1;
+}
+
+.resource-batch-form__section {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.resource-batch-form__label {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.resource-batch-form__picker {
+  width: min(240px, 100%);
+}
+
+.resource-batch-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.resource-batch-selected-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.resource-batch-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid rgba(11, 114, 133, 0.24);
+  border-radius: 999px;
+  background: rgba(11, 114, 133, 0.08);
+  color: var(--accent-strong);
+  padding: 0.4rem 0.7rem;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.resource-batch-chip:focus-visible {
+  outline: 2px solid rgba(11, 114, 133, 0.35);
+  outline-offset: 2px;
+}
+
+.resource-batch-preview {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.resource-batch-preview__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.resource-batch-preview__list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.resource-batch-preview__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.75rem;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
+  background: rgba(255, 255, 255, 0.72);
+}
+
 .date-time-field {
   border: 0;
   padding: 0;
@@ -1669,6 +1756,7 @@
 
   .users-form-grid,
   .resources-form-grid,
+  .resource-batch-form,
   .users-list,
   .rules-form-grid,
   .rules-list,
@@ -1746,6 +1834,11 @@
   .date-time-field__grid,
   .time-picker__columns {
     grid-template-columns: 1fr;
+  }
+
+  .resource-batch-preview__item {
+    grid-template-columns: 1fr;
+    align-items: start;
   }
 
   .resource-day-calendar {

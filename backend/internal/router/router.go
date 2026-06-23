@@ -80,6 +80,8 @@ func Register(e *echo.Echo, deps Dependencies) {
 
 	managerGroup := authorizedGroup.Group("", rfmiddleware.RequireRoles("admin", "manager"))
 	authorizedGroup.POST("/bookings", deps.BookingHandler.Create)
+	authorizedGroup.POST("/bookings/batch/preview", deps.BookingHandler.PreviewBatch)
+	authorizedGroup.POST("/bookings/batch", deps.BookingHandler.CreateBatch)
 	managerGroup.GET("/bookings", deps.BookingHandler.List)
 	authorizedGroup.GET("/bookings/:id", deps.BookingHandler.GetByID)
 	authorizedGroup.GET("/my/bookings", deps.BookingHandler.MyList)

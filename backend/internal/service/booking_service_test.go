@@ -13,6 +13,10 @@ import (
 	"resourceflow/backend/internal/service"
 )
 
+func timePtr(value time.Time) *time.Time {
+	return &value
+}
+
 func TestBookingService_Create_StatusByRequiresApproval(t *testing.T) {
 	t.Parallel()
 
@@ -1327,12 +1331,17 @@ func TestBookingService_ProcessExpiredBookings_RemovesExpiredFromBusyIntervals(t
 		t.Fatalf("ProcessExpiredBookings returned error: %v", err)
 	}
 
-	busyIntervals, err := svc.ListBusyIntervalsByResourceID(context.Background(), 10)
+	busyIntervals, err := svc.ListBusyIntervalsByResourceIDInRange(
+		context.Background(),
+		10,
+		timePtr(now.Add(-3*time.Hour)),
+		timePtr(now.Add(5*time.Hour)),
+	)
 	if err != nil {
 		t.Fatalf("ListBusyIntervalsByResourceID returned error: %v", err)
 	}
-	if len(busyIntervals) != 1 {
-		t.Fatalf("unexpected busy intervals count: got %d want 1", len(busyIntervals))
+	if len(busyIntervals) != 2 {
+		t.Fatalf("unexpected busy intervals count: got %d want 2", len(busyIntervals))
 	}
 	for _, interval := range busyIntervals {
 		if !interval.StartAt.After(now) {
@@ -1547,7 +1556,12 @@ func TestBookingService_CancelAt_RemovesBookingFromBusyIntervals(t *testing.T) {
 		t.Fatalf("CancelAt returned error: %v", err)
 	}
 
-	busyIntervals, err := svc.ListBusyIntervalsByResourceID(context.Background(), 10)
+	busyIntervals, err := svc.ListBusyIntervalsByResourceIDInRange(
+		context.Background(),
+		10,
+		timePtr(now),
+		timePtr(now.Add(5*time.Hour)),
+	)
 	if err != nil {
 		t.Fatalf("ListBusyIntervalsByResourceID returned error: %v", err)
 	}

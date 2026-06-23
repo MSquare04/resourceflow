@@ -1,4 +1,10 @@
-import type { Booking, CreateBookingPayload } from "../types/bookings";
+import type {
+  BatchBookingCreateResponse,
+  BatchBookingPayload,
+  BatchBookingPreviewResponse,
+  Booking,
+  CreateBookingPayload,
+} from "../types/bookings";
 import { apiRequest } from "./client";
 
 export function listMyBookings(): Promise<Booking[]> {
@@ -35,6 +41,20 @@ export function completeBooking(id: number): Promise<Booking> {
 
 export function createBooking(payload: CreateBookingPayload): Promise<Booking> {
   return apiRequest<Booking>("/bookings", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function previewBatchBookings(payload: BatchBookingPayload): Promise<BatchBookingPreviewResponse> {
+  return apiRequest<BatchBookingPreviewResponse>("/bookings/batch/preview", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createBatchBookings(payload: BatchBookingPayload): Promise<BatchBookingCreateResponse> {
+  return apiRequest<BatchBookingCreateResponse>("/bookings/batch", {
     method: "POST",
     body: JSON.stringify(payload),
   });

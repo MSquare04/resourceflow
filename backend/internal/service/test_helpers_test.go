@@ -24,6 +24,7 @@ type bookingRepoMock struct {
 	processExpiredFn   func(ctx context.Context, now time.Time) (repository.ExpiredBookingProcessingResult, error)
 	updateStatusFn     func(ctx context.Context, id int64, params repository.UpdateBookingStatusParams) (model.Booking, error)
 	transitionStatusFn func(ctx context.Context, id int64, expectedFrom []string, params repository.UpdateBookingStatusParams) (model.Booking, string, error)
+	withTransactionFn  func(ctx context.Context, fn func(repo repository.BookingRepository) error) error
 }
 
 func (m *bookingRepoMock) Create(ctx context.Context, params repository.CreateBookingParams) (model.Booking, error) {
@@ -106,6 +107,13 @@ func (m *bookingRepoMock) TransitionStatus(ctx context.Context, id int64, expect
 		return m.transitionStatusFn(ctx, id, expectedFrom, params)
 	}
 	return model.Booking{}, "", errUnexpectedCall
+}
+
+func (m *bookingRepoMock) WithTransaction(ctx context.Context, fn func(repo repository.BookingRepository) error) error {
+	if m.withTransactionFn != nil {
+		return m.withTransactionFn(ctx, fn)
+	}
+	return fn(m)
 }
 
 type resourceRepoMock struct {

@@ -24,8 +24,20 @@ type BookingRepository interface {
 	TransitionStatus(ctx context.Context, id int64, expectedFrom []string, params UpdateBookingStatusParams) (model.Booking, string, error)
 }
 
+type BookingRepositoryTxRunner interface {
+	BookingRepository
+	WithTransaction(ctx context.Context, fn func(repo BookingRepository) error) error
+}
+
+type bookingQueryRunner interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
 type PostgresBookingRepository struct {
-	db *sql.DB
+	db     *sql.DB
+	runner bookingQueryRunner
 }
 
 type CreateBookingParams struct {
@@ -51,7 +63,31 @@ type ExpiredBookingProcessingResult struct {
 }
 
 func NewBookingRepository(db *sql.DB) *PostgresBookingRepository {
-	return &PostgresBookingRepository{db: db}
+	return &PostgresBookingRepository{db: db, runner: db}
+}
+
+func (r *PostgresBookingRepository) WithTransaction(ctx context.Context, fn func(repo BookingRepository) error) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin booking transaction failed: %w", err)
+	}
+
+	txRepo := &PostgresBookingRepository{
+		db:     r.db,
+		runner: tx,
+	}
+	if err := fn(txRepo); err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return fmt.Errorf("rollback booking transaction failed: %v: %w", rollbackErr, err)
+		}
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit booking transaction failed: %w", err)
+	}
+
+	return nil
 }
 
 func (r *PostgresBookingRepository) Create(ctx context.Context, params CreateBookingParams) (model.Booking, error) {
@@ -74,7 +110,7 @@ RETURNING
   updated_at;
 `
 
-	row := r.db.QueryRowContext(
+	row := r.runner.QueryRowContext(
 		ctx,
 		query,
 		params.ResourceID,
@@ -112,7 +148,7 @@ FROM app.bookings
 ORDER BY id DESC;
 `
 
-	rows, err := r.db.QueryContext(ctx, query)
+	rows, err := r.runner.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("list bookings query failed: %w", err)
 	}
@@ -155,7 +191,7 @@ WHERE user_id = $1
 ORDER BY id DESC;
 `
 
-	rows, err := r.db.QueryContext(ctx, query, userID)
+	rows, err := r.runner.QueryContext(ctx, query, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list bookings by user query failed: %w", err)
 	}
@@ -206,7 +242,7 @@ WHERE resource_id = $1
 ORDER BY start_at ASC, end_at ASC;
 `
 
-	rows, err := r.db.QueryContext(ctx, query, resourceID, pq.Array(statuses), from, until)
+	rows, err := r.runner.QueryContext(ctx, query, resourceID, pq.Array(statuses), from, until)
 	if err != nil {
 		return nil, fmt.Errorf("list busy intervals by resource query failed: %w", err)
 	}
@@ -249,7 +285,7 @@ WHERE id = $1
 LIMIT 1;
 `
 
-	row := r.db.QueryRowContext(ctx, query, id)
+	row := r.runner.QueryRowContext(ctx, query, id)
 	booking, err := scanBooking(row)
 	if err != nil {
 		return model.Booking{}, fmt.Errorf("find booking by id query failed: %w", err)
@@ -267,7 +303,7 @@ WHERE user_id = $1
 `
 
 	var count int64
-	if err := r.db.QueryRowContext(ctx, query, userID, pq.Array(statuses)).Scan(&count); err != nil {
+	if err := r.runner.QueryRowContext(ctx, query, userID, pq.Array(statuses)).Scan(&count); err != nil {
 		return 0, fmt.Errorf("count bookings by user and statuses query failed: %w", err)
 	}
 
@@ -287,7 +323,7 @@ SELECT EXISTS (
 `
 
 	var exists bool
-	if err := r.db.QueryRowContext(ctx, query, resourceID, pq.Array(statuses), startAt, endAt).Scan(&exists); err != nil {
+	if err := r.runner.QueryRowContext(ctx, query, resourceID, pq.Array(statuses), startAt, endAt).Scan(&exists); err != nil {
 		return false, fmt.Errorf("check booking conflict query failed: %w", err)
 	}
 
@@ -314,7 +350,7 @@ SELECT EXISTS (
 `
 
 	var covered bool
-	if err := r.db.QueryRowContext(ctx, query, resourceID, startAt, endAt).Scan(&covered); err != nil {
+	if err := r.runner.QueryRowContext(ctx, query, resourceID, startAt, endAt).Scan(&covered); err != nil {
 		return false, fmt.Errorf("check booking availability coverage query failed: %w", err)
 	}
 
@@ -347,7 +383,7 @@ SELECT
 `
 
 	var result ExpiredBookingProcessingResult
-	if err := r.db.QueryRowContext(ctx, query, now.UTC()).Scan(&result.CompletedCount, &result.CancelledCount); err != nil {
+	if err := r.runner.QueryRowContext(ctx, query, now.UTC()).Scan(&result.CompletedCount, &result.CancelledCount); err != nil {
 		return ExpiredBookingProcessingResult{}, fmt.Errorf("process expired bookings query failed: %w", err)
 	}
 
@@ -380,7 +416,7 @@ RETURNING
   updated_at;
 `
 
-	row := r.db.QueryRowContext(
+	row := r.runner.QueryRowContext(
 		ctx,
 		query,
 		id,
@@ -464,7 +500,7 @@ FROM updated;
 	var cancelledAt sql.NullTime
 	var completedAt sql.NullTime
 
-	err := r.db.QueryRowContext(
+	err := r.runner.QueryRowContext(
 		ctx,
 		query,
 		id,

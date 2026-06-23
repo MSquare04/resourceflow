@@ -1,8 +1,8 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+﻿import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { createBooking } from "../api/bookings";
+import { createBatchBookings, createBooking, previewBatchBookings } from "../api/bookings";
 import { listBookingRules } from "../api/bookingRules";
 import { ApiError } from "../api/client";
 import { listDepartments } from "../api/departments";
@@ -21,8 +21,11 @@ import { DatePicker } from "../components/DatePicker";
 import { DateTimeField } from "../components/DateTimeField";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
+import { MultiDatePicker } from "../components/MultiDatePicker";
 import { PageHeader } from "../components/PageHeader";
+import { TimePicker } from "../components/TimePicker";
 import type { BookingRule } from "../types/bookingRules";
+import type { BatchBookingPreviewResponse } from "../types/bookings";
 import type {
   Resource,
   ResourceBusyInterval,
@@ -31,9 +34,10 @@ import type {
   ResourceUnavailability as ResourceAvailability,
 } from "../types/resources";
 import type { Department } from "../types/users";
-import { formatLocalDate, formatLocalTime, formatUtcDateTime } from "../utils/datetime";
+import { formatDisplayDate, formatLocalDate, formatLocalTime, formatUtcDateTime } from "../utils/datetime";
 
 type AvailabilityFormMode = "create" | "edit";
+type BookingMode = "single" | "multiple";
 
 function mapBookingError(error: ApiError, t: ReturnType<typeof useTranslation>["t"]): string {
   if (error.code === "conflict" || error.status === 409) {
@@ -125,6 +129,24 @@ function addMinutes(date: Date, minutes: number): Date {
   return new Date(date.getTime() + minutes * 60_000);
 }
 
+function buildSequentialDateKeys(startDateKey: string, days: number): string[] {
+  const result: string[] = [];
+  const startDate = parseLocalDateKey(startDateKey);
+  for (let index = 0; index < days; index += 1) {
+    const nextDate = new Date(startDate);
+    nextDate.setDate(startDate.getDate() + index);
+    result.push(getLocalDateKey(nextDate));
+  }
+  return result;
+}
+
+function getTimePart(dateTimeValue: string): string {
+  if (!dateTimeValue.includes("T")) {
+    return "";
+  }
+  return dateTimeValue.slice(11, 16);
+}
+
 function intervalsIntersect(startAt: number, endAt: number, otherStartAt: number, otherEndAt: number): boolean {
   return startAt < otherEndAt && endAt > otherStartAt;
 }
@@ -214,6 +236,15 @@ export function ResourceDetailsPage(): JSX.Element {
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
   const [purpose, setPurpose] = useState("");
+  const [bookingMode, setBookingMode] = useState<BookingMode>("single");
+  const [batchSelectedDates, setBatchSelectedDates] = useState<string[]>(() => [getLocalDateKey(new Date())]);
+  const [selectedBatchPresetDays, setSelectedBatchPresetDays] = useState<number | null>(null);
+  const [batchStartTime, setBatchStartTime] = useState("");
+  const [batchEndTime, setBatchEndTime] = useState("");
+  const [batchPreview, setBatchPreview] = useState<BatchBookingPreviewResponse | null>(null);
+  const [batchFormError, setBatchFormError] = useState<string | null>(null);
+  const [isBatchPreviewLoading, setIsBatchPreviewLoading] = useState(false);
+  const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [busyLoading, setBusyLoading] = useState(true);
@@ -230,7 +261,34 @@ export function ResourceDetailsPage(): JSX.Element {
   const [pendingAvailabilityId, setPendingAvailabilityId] = useState<number | null>(null);
   const availabilityFormRef = useRef<HTMLFormElement | null>(null);
   const bookingRuleActionButtonRef = useRef<HTMLButtonElement | null>(null);
+  const batchPreviewRequestIdRef = useRef(0);
   const startAtMin = toDateTimeLocalValue(getCurrentLocalMinute());
+
+  useEffect(() => {
+    if (!batchStartTime) {
+      const initialStart = getCurrentLocalMinute();
+      setBatchStartTime(toDateTimeLocalValue(initialStart).slice(11, 16));
+      setBatchEndTime(toDateTimeLocalValue(addMinutes(initialStart, 30)).slice(11, 16));
+    }
+  }, [batchEndTime, batchStartTime]);
+
+  useEffect(() => {
+    if (startAt) {
+      setBatchStartTime(getTimePart(startAt));
+    }
+  }, [startAt]);
+
+  useEffect(() => {
+    if (endAt) {
+      setBatchEndTime(getTimePart(endAt));
+    }
+  }, [endAt]);
+
+  useEffect(() => {
+    batchPreviewRequestIdRef.current += 1;
+    setBatchPreview(null);
+    setBatchFormError(null);
+  }, [batchStartTime, batchEndTime, bookingMode, purpose, resourceId]);
 
   useEffect(() => {
     void loadResourceDetails();
@@ -363,6 +421,12 @@ export function ResourceDetailsPage(): JSX.Element {
   const hasAdditionalRestrictions = uniqueAvailability.length > 0;
   const bookingDisabled = !activeBookingRule || !resource?.is_active || !resource?.is_bookable;
   const bookingFormAvailable = !!activeBookingRule && !!resource?.is_active && !!resource?.is_bookable;
+  const canSubmitBatch =
+    batchSelectedDates.length > 0 &&
+    batchPreview !== null &&
+    batchPreview.can_create &&
+    batchPreview.items.every((item) => item.valid) &&
+    !isBatchPreviewLoading;
   const selectedDayStart = useMemo(() => parseLocalDateKey(selectedDate), [selectedDate]);
   const selectedDayEnd = useMemo(() => {
     const nextDay = new Date(selectedDayStart);
@@ -577,6 +641,136 @@ export function ResourceDetailsPage(): JSX.Element {
     setFormError(null);
   }
 
+  function toggleBatchDate(dateKey: string): void {
+    batchPreviewRequestIdRef.current += 1;
+    setSelectedBatchPresetDays(null);
+    setBatchSelectedDates((current) => {
+      const nextDates = current.includes(dateKey) ? current.filter((item) => item !== dateKey) : [...current, dateKey];
+      return [...nextDates].sort();
+    });
+    setBatchPreview(null);
+    setBatchFormError(null);
+  }
+
+  function handleBatchQuickRange(days: number): void {
+    batchPreviewRequestIdRef.current += 1;
+    setSelectedBatchPresetDays(days);
+    setBatchSelectedDates(buildSequentialDateKeys(selectedDate, days));
+    setBatchPreview(null);
+    setBatchFormError(null);
+  }
+
+  function removeBatchDate(dateKey: string): void {
+    batchPreviewRequestIdRef.current += 1;
+    setSelectedBatchPresetDays(null);
+    setBatchSelectedDates((current) => {
+      const nextDates = current.filter((item) => item !== dateKey);
+
+      if (nextDates.length === 0) {
+        setBatchPreview({ can_create: false, items: [] });
+        setBatchFormError(null);
+        return nextDates;
+      }
+
+      if (batchPreview) {
+        void runBatchPreview(nextDates);
+      } else {
+        setBatchPreview(null);
+        setBatchFormError(null);
+      }
+
+      return nextDates;
+    });
+  }
+
+  function validateBatchBooking(): string | null {
+    if (batchSelectedDates.length === 0) {
+      return t("pages.resourceDetails.booking.multiple.errors.noDates");
+    }
+
+    if (!batchStartTime || !batchEndTime) {
+      return t("pages.resourceDetails.booking.errors.requiredDates");
+    }
+
+    if (batchStartTime >= batchEndTime) {
+      return t("pages.resourceDetails.booking.errors.invalidRange");
+    }
+
+    return null;
+  }
+
+  function mapBatchPreviewCode(errorCode?: string): string {
+    switch (errorCode) {
+      case "booking_conflict":
+        return t("pages.resourceDetails.booking.multiple.preview.conflict");
+      case "booking_outside_workday":
+        return t("pages.resourceDetails.booking.multiple.preview.outsideWorkday");
+      case "booking_in_unavailability":
+        return t("pages.resourceDetails.booking.multiple.preview.technicalRestriction");
+      case "booking_horizon_exceeded":
+        return t("pages.resourceDetails.booking.multiple.preview.horizonExceeded");
+      case "booking_limit_exceeded":
+        return t("pages.resourceDetails.booking.multiple.preview.limitExceeded");
+      case "booking_start_in_past":
+        return t("pages.resourceDetails.booking.multiple.preview.startInPast");
+      case "booking_resource_unavailable":
+        return t("pages.resourceDetails.booking.multiple.preview.resourceUnavailable");
+      case "booking_rule_not_configured":
+        return t("pages.resourceDetails.booking.multiple.preview.ruleNotConfigured");
+      default:
+        return t("pages.resourceDetails.booking.multiple.preview.invalid");
+    }
+  }
+
+  async function runBatchPreview(dates: string[] = batchSelectedDates): Promise<void> {
+    const validationError = validateBatchBooking();
+    if (validationError) {
+      setBatchFormError(validationError);
+      return;
+    }
+
+    if (!resource) {
+      setBatchFormError(t("pages.resourceDetails.booking.errors.resourceNotFound"));
+      return;
+    }
+
+    setBatchFormError(null);
+    setIsBatchPreviewLoading(true);
+    const requestId = batchPreviewRequestIdRef.current + 1;
+    batchPreviewRequestIdRef.current = requestId;
+
+    try {
+      const preview = await previewBatchBookings({
+        resource_id: resource.id,
+        dates,
+        start_time: batchStartTime,
+        end_time: batchEndTime,
+        purpose: purpose.trim() ? purpose.trim() : null,
+      });
+      if (batchPreviewRequestIdRef.current === requestId) {
+        setBatchPreview(preview);
+      }
+    } catch (submitError) {
+      if (batchPreviewRequestIdRef.current === requestId) {
+        if (submitError instanceof ApiError) {
+          setBatchFormError(submitError.message);
+        } else if (submitError instanceof Error) {
+          setBatchFormError(submitError.message);
+        } else {
+          setBatchFormError(t("pages.resourceDetails.booking.errors.generic"));
+        }
+      }
+    } finally {
+      if (batchPreviewRequestIdRef.current === requestId) {
+        setIsBatchPreviewLoading(false);
+      }
+    }
+  }
+
+  async function handleBatchPreview(): Promise<void> {
+    await runBatchPreview();
+  }
+
   function resetAvailabilityForm(): void {
     setAvailabilityFormMode("create");
     setEditingAvailabilityId(null);
@@ -775,6 +969,54 @@ export function ResourceDetailsPage(): JSX.Element {
       }
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleBatchCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+
+    const validationError = validateBatchBooking();
+    if (validationError) {
+      setBatchFormError(validationError);
+      return;
+    }
+
+    if (!resource) {
+      setBatchFormError(t("pages.resourceDetails.booking.errors.resourceNotFound"));
+      return;
+    }
+
+    if (!batchPreview || !batchPreview.can_create || batchPreview.items.some((item) => !item.valid)) {
+      setBatchFormError(t("pages.resourceDetails.booking.multiple.errors.previewRequired"));
+      return;
+    }
+
+    setBatchFormError(null);
+    setIsBatchSubmitting(true);
+
+    try {
+      const result = await createBatchBookings({
+        resource_id: resource.id,
+        dates: batchSelectedDates,
+        start_time: batchStartTime,
+        end_time: batchEndTime,
+        purpose: purpose.trim() ? purpose.trim() : null,
+      });
+
+      window.alert(t("pages.resourceDetails.booking.multiple.success", { count: result.created_count }));
+      setBatchPreview(null);
+      setBatchSelectedDates([selectedDate]);
+      await Promise.all([loadResourceDetails(), loadBusyIntervalsForSelectedDate()]);
+    } catch (submitError) {
+      if (submitError instanceof ApiError) {
+        setBatchFormError(submitError.message);
+      } else if (submitError instanceof Error) {
+        setBatchFormError(submitError.message);
+      } else {
+        setBatchFormError(t("pages.resourceDetails.booking.errors.generic"));
+      }
+    } finally {
+      setIsBatchSubmitting(false);
     }
   }
 
@@ -1185,51 +1427,200 @@ export function ResourceDetailsPage(): JSX.Element {
                         end: activeBookingRule.workday_end,
                       })}
                 </p>
-                <form className="form-grid" onSubmit={handleSubmit}>
-                  <DateTimeField
-                    label={t("pages.resourceDetails.booking.fields.startAt")}
-                    value={startAt}
-                    minValue={startAtMin}
-                    required
-                    disabled={bookingDisabled || isSubmitting}
-                    onApply={(value) => {
-                      setStartAt(value);
-                      if (value) {
-                        setSelectedDate(value.slice(0, 10));
-                      }
-
-                      if (endAt && value && endAt < value) {
-                        setEndAt(value);
-                      }
-                    }}
-                  />
-
-                  <DateTimeField
-                    label={t("pages.resourceDetails.booking.fields.endAt")}
-                    value={endAt}
-                    minValue={endAtMin}
-                    required
-                    disabled={bookingDisabled || isSubmitting}
-                    onApply={setEndAt}
-                  />
-
-                  <label className="field">
-                    <span>{t("pages.resourceDetails.booking.fields.purpose")}</span>
-                    <textarea
-                      value={purpose}
-                      onChange={(event) => setPurpose(event.target.value)}
-                      rows={4}
-                      disabled={bookingDisabled || isSubmitting}
-                      placeholder={t("pages.resourceDetails.booking.fields.purposePlaceholder")}
-                    />
-                  </label>
-
-                  {formError ? <p className="error-text">{formError}</p> : null}
-
-                  <button type="submit" className="btn btn-primary" disabled={isSubmitting || bookingDisabled}>
-                    {isSubmitting ? t("pages.resourceDetails.booking.submitting") : t("pages.resourceDetails.booking.submit")}
+                <div className="bookings-tabs" role="tablist" aria-label={t("pages.resourceDetails.booking.mode.label")}>
+                  <button
+                    type="button"
+                    className={`bookings-tab ${bookingMode === "single" ? "active" : ""}`}
+                    onClick={() => setBookingMode("single")}
+                  >
+                    {t("pages.resourceDetails.booking.mode.single")}
                   </button>
-                </form>
+                  <button
+                    type="button"
+                    className={`bookings-tab ${bookingMode === "multiple" ? "active" : ""}`}
+                    onClick={() => setBookingMode("multiple")}
+                  >
+                    {t("pages.resourceDetails.booking.mode.multiple")}
+                  </button>
+                </div>
+
+                {bookingMode === "single" ? (
+                  <form className="form-grid" onSubmit={handleSubmit}>
+                    <DateTimeField
+                      label={t("pages.resourceDetails.booking.fields.startAt")}
+                      value={startAt}
+                      minValue={startAtMin}
+                      required
+                      disabled={bookingDisabled || isSubmitting}
+                      onApply={(value) => {
+                        setStartAt(value);
+                        if (value) {
+                          setSelectedDate(value.slice(0, 10));
+                        }
+
+                        if (endAt && value && endAt < value) {
+                          setEndAt(value);
+                        }
+                      }}
+                    />
+
+                    <DateTimeField
+                      label={t("pages.resourceDetails.booking.fields.endAt")}
+                      value={endAt}
+                      minValue={endAtMin}
+                      required
+                      disabled={bookingDisabled || isSubmitting}
+                      onApply={setEndAt}
+                    />
+
+                    <label className="field">
+                      <span>{t("pages.resourceDetails.booking.fields.purpose")}</span>
+                      <textarea
+                        value={purpose}
+                        onChange={(event) => setPurpose(event.target.value)}
+                        rows={4}
+                        disabled={bookingDisabled || isSubmitting}
+                        placeholder={t("pages.resourceDetails.booking.fields.purposePlaceholder")}
+                      />
+                    </label>
+
+                    {formError ? <p className="error-text">{formError}</p> : null}
+
+                    <button type="submit" className="btn btn-primary" disabled={isSubmitting || bookingDisabled}>
+                      {isSubmitting ? t("pages.resourceDetails.booking.submitting") : t("pages.resourceDetails.booking.submit")}
+                    </button>
+                  </form>
+                ) : (
+                  <form className="form-grid resource-batch-form" onSubmit={handleBatchCreate}>
+                    <div className="resource-batch-form__full">
+                      <div className="resource-batch-form__section">
+                        <span className="resource-batch-form__label">{t("pages.resourceDetails.booking.multiple.quickRanges")}</span>
+                        <div className="resource-day-calendar__quick-actions">
+                          {[3, 5, 7, 14].map((days) => (
+                            <button
+                              key={days}
+                              type="button"
+                              className={`bookings-tab ${selectedBatchPresetDays === days ? "active" : ""}`}
+                              aria-pressed={selectedBatchPresetDays === days}
+                              onClick={() => handleBatchQuickRange(days)}
+                            >
+                              {t("pages.resourceDetails.booking.multiple.rangeDays", { count: days })}
+                            </button>
+                          ))}
+                          <div className="resource-batch-form__picker">
+                            <MultiDatePicker
+                              values={batchSelectedDates}
+                              onToggleDate={toggleBatchDate}
+                              minValue={getLocalDateKey(getCurrentLocalMinute())}
+                              disabled={bookingDisabled || isBatchPreviewLoading || isBatchSubmitting}
+                              ariaLabel={t("pages.resourceDetails.booking.multiple.pickDates")}
+                              triggerLabel={t("pages.resourceDetails.booking.multiple.pickDates")}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="resource-batch-form__full">
+                      <div className="resource-batch-selected-list">
+                        {batchSelectedDates.map((dateKey) => (
+                          <button
+                            key={dateKey}
+                            type="button"
+                            className="resource-batch-chip"
+                            onClick={() => removeBatchDate(dateKey)}
+                          >
+                            <span>{formatDisplayDate(parseLocalDateKey(dateKey))}</span>
+                            <span aria-hidden="true">×</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <label className="field">
+                      <span>{t("pages.resourceDetails.booking.fields.startAt")}</span>
+                      <TimePicker
+                        value={batchStartTime}
+                        onChange={setBatchStartTime}
+                        disabled={bookingDisabled || isBatchPreviewLoading || isBatchSubmitting}
+                        minuteStep={5}
+                        ariaLabel={t("pages.resourceDetails.booking.fields.startAt")}
+                      />
+                    </label>
+
+                    <label className="field">
+                      <span>{t("pages.resourceDetails.booking.fields.endAt")}</span>
+                      <TimePicker
+                        value={batchEndTime}
+                        onChange={setBatchEndTime}
+                        disabled={bookingDisabled || isBatchPreviewLoading || isBatchSubmitting}
+                        minuteStep={5}
+                        ariaLabel={t("pages.resourceDetails.booking.fields.endAt")}
+                      />
+                    </label>
+
+                    <label className="field resource-batch-form__full">
+                      <span>{t("pages.resourceDetails.booking.fields.purpose")}</span>
+                      <textarea
+                        value={purpose}
+                        onChange={(event) => setPurpose(event.target.value)}
+                        rows={4}
+                        disabled={bookingDisabled || isBatchPreviewLoading || isBatchSubmitting}
+                        placeholder={t("pages.resourceDetails.booking.fields.purposePlaceholder")}
+                      />
+                    </label>
+
+                    <div className="resource-batch-form__actions resource-batch-form__full">
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => void handleBatchPreview()}
+                        disabled={bookingDisabled || isBatchPreviewLoading || isBatchSubmitting}
+                      >
+                        {isBatchPreviewLoading
+                          ? t("pages.resourceDetails.booking.multiple.preview.loading")
+                          : t("pages.resourceDetails.booking.multiple.preview.action")}
+                      </button>
+                      <button type="submit" className="btn btn-primary" disabled={!canSubmitBatch || isBatchSubmitting || bookingDisabled}>
+                        {isBatchSubmitting
+                          ? t("pages.resourceDetails.booking.multiple.submitLoading")
+                          : t("pages.resourceDetails.booking.multiple.submit")}
+                      </button>
+                    </div>
+
+                    {batchFormError ? <p className="error-text resource-batch-form__full">{batchFormError}</p> : null}
+
+                    {batchPreview ? (
+                      <div className="resource-batch-preview resource-batch-form__full">
+                        <h4 className="resource-batch-preview__title">{t("pages.resourceDetails.booking.multiple.preview.title")}</h4>
+                        {isBatchPreviewLoading ? (
+                          <LoadingState message={t("pages.resourceDetails.booking.multiple.preview.loading")} />
+                        ) : batchPreview.items.length === 0 ? (
+                          <p className="muted resource-details-hint">{t("pages.resourceDetails.booking.multiple.preview.empty")}</p>
+                        ) : (
+                          <div className="resource-batch-preview__list" role="list">
+                            {batchPreview.items.map((item) => (
+                              <article key={item.date} className="resource-batch-preview__item" role="listitem">
+                                <div>
+                                  <strong>{formatDisplayDate(parseLocalDateKey(item.date))}</strong>
+                                  <div className="muted">{`${batchStartTime}-${batchEndTime}`}</div>
+                                </div>
+                                <div className={`badge ${item.valid ? "badge-success" : "badge-warning"}`}>
+                                  {item.valid
+                                    ? t("pages.resourceDetails.booking.multiple.preview.available")
+                                    : mapBatchPreviewCode(item.error_code)}
+                                </div>
+                                <button type="button" className="btn btn-secondary" onClick={() => removeBatchDate(item.date)}>
+                                  {t("pages.resourceDetails.booking.multiple.preview.remove")}
+                                </button>
+                              </article>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                  </form>
+                )}
               </>
             )}
           </div>
@@ -1238,3 +1629,4 @@ export function ResourceDetailsPage(): JSX.Element {
     </section>
   );
 }
+

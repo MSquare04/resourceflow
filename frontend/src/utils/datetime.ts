@@ -32,6 +32,14 @@ export function formatLocalDate(date: Date, locale?: string): string {
   }).format(date);
 }
 
+export function formatDisplayDate(date: Date, locale?: string): string {
+  return new Intl.DateTimeFormat(locale ?? getCurrentLocale(), {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
 export function formatLocalTime(date: Date, locale?: string): string {
   return new Intl.DateTimeFormat(locale ?? getCurrentLocale(), {
     timeStyle: "short",
