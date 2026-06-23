@@ -17,6 +17,7 @@ import {
   updateResourceUnavailability as updateResourceAvailability,
 } from "../api/resources";
 import { useRoles } from "../auth/useRoles";
+import { DatePicker } from "../components/DatePicker";
 import { DateTimeField } from "../components/DateTimeField";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
@@ -361,6 +362,7 @@ export function ResourceDetailsPage(): JSX.Element {
   }, [bookingRules, resource]);
   const hasAdditionalRestrictions = uniqueAvailability.length > 0;
   const bookingDisabled = !activeBookingRule || !resource?.is_active || !resource?.is_bookable;
+  const bookingFormAvailable = !!activeBookingRule && !!resource?.is_active && !!resource?.is_bookable;
   const selectedDayStart = useMemo(() => parseLocalDateKey(selectedDate), [selectedDate]);
   const selectedDayEnd = useMemo(() => {
     const nextDay = new Date(selectedDayStart);
@@ -1102,14 +1104,14 @@ export function ResourceDetailsPage(): JSX.Element {
 
               <label className="field resource-day-calendar__date-field">
                 <span>{t("pages.resourceDetails.busy.selectedDate")}</span>
-                <input
-                  type="date"
+                <DatePicker
                   value={selectedDate}
-                  onChange={(event) => {
-                    if (event.target.value) {
-                      setSelectedDate(event.target.value);
+                  onChange={(value) => {
+                    if (value) {
+                      setSelectedDate(value);
                     }
                   }}
+                  ariaLabel={t("pages.resourceDetails.busy.selectedDate")}
                 />
               </label>
             </div>
@@ -1167,65 +1169,69 @@ export function ResourceDetailsPage(): JSX.Element {
 
           <div className="resource-details-card">
             <h3 className="resource-details-card__title">{t("pages.resourceDetails.booking.title")}</h3>
-            {!activeBookingRule ? (
-              <p className="muted resource-details-hint">{t("pages.resourceDetails.booking.disabledNoRule")}</p>
-            ) : !resource.is_active || !resource.is_bookable ? (
-              <p className="muted resource-details-hint">{t("pages.resourceDetails.booking.errors.resourceUnavailable")}</p>
+            {!bookingFormAvailable ? (
+              !activeBookingRule ? (
+                <p className="muted resource-details-hint">{t("pages.resourceDetails.booking.disabledNoRule")}</p>
+              ) : !resource.is_active || !resource.is_bookable ? (
+                <p className="muted resource-details-hint">{t("pages.resourceDetails.booking.errors.resourceUnavailable")}</p>
+              ) : null
             ) : (
-              <p className="muted resource-details-hint">
-                {activeBookingRule.unrestricted_time
-                  ? t("pages.resourceDetails.booking.unrestrictedHint")
-                  : t("pages.resourceDetails.rule.values.workdayValue", {
-                      start: activeBookingRule.workday_start,
-                      end: activeBookingRule.workday_end,
-                    })}
-              </p>
+              <>
+                <p className="muted resource-details-hint">
+                  {activeBookingRule.unrestricted_time
+                    ? t("pages.resourceDetails.booking.unrestrictedHint")
+                    : t("pages.resourceDetails.rule.values.workdayValue", {
+                        start: activeBookingRule.workday_start,
+                        end: activeBookingRule.workday_end,
+                      })}
+                </p>
+                <form className="form-grid" onSubmit={handleSubmit}>
+                  <DateTimeField
+                    label={t("pages.resourceDetails.booking.fields.startAt")}
+                    value={startAt}
+                    minValue={startAtMin}
+                    required
+                    disabled={bookingDisabled || isSubmitting}
+                    onApply={(value) => {
+                      setStartAt(value);
+                      if (value) {
+                        setSelectedDate(value.slice(0, 10));
+                      }
+
+                      if (endAt && value && endAt < value) {
+                        setEndAt(value);
+                      }
+                    }}
+                  />
+
+                  <DateTimeField
+                    label={t("pages.resourceDetails.booking.fields.endAt")}
+                    value={endAt}
+                    minValue={endAtMin}
+                    required
+                    disabled={bookingDisabled || isSubmitting}
+                    onApply={setEndAt}
+                  />
+
+                  <label className="field">
+                    <span>{t("pages.resourceDetails.booking.fields.purpose")}</span>
+                    <textarea
+                      value={purpose}
+                      onChange={(event) => setPurpose(event.target.value)}
+                      rows={4}
+                      disabled={bookingDisabled || isSubmitting}
+                      placeholder={t("pages.resourceDetails.booking.fields.purposePlaceholder")}
+                    />
+                  </label>
+
+                  {formError ? <p className="error-text">{formError}</p> : null}
+
+                  <button type="submit" className="btn btn-primary" disabled={isSubmitting || bookingDisabled}>
+                    {isSubmitting ? t("pages.resourceDetails.booking.submitting") : t("pages.resourceDetails.booking.submit")}
+                  </button>
+                </form>
+              </>
             )}
-            <form className="form-grid" onSubmit={handleSubmit}>
-              <DateTimeField
-                label={t("pages.resourceDetails.booking.fields.startAt")}
-                value={startAt}
-                minValue={startAtMin}
-                required
-                disabled={bookingDisabled || isSubmitting}
-                onApply={(value) => {
-                  setStartAt(value);
-                  if (value) {
-                    setSelectedDate(value.slice(0, 10));
-                  }
-
-                  if (endAt && value && endAt < value) {
-                    setEndAt(value);
-                  }
-                }}
-              />
-
-              <DateTimeField
-                label={t("pages.resourceDetails.booking.fields.endAt")}
-                value={endAt}
-                minValue={endAtMin}
-                required
-                disabled={bookingDisabled || isSubmitting}
-                onApply={setEndAt}
-              />
-
-              <label className="field">
-                <span>{t("pages.resourceDetails.booking.fields.purpose")}</span>
-                <textarea
-                  value={purpose}
-                  onChange={(event) => setPurpose(event.target.value)}
-                  rows={4}
-                  disabled={bookingDisabled || isSubmitting}
-                  placeholder={t("pages.resourceDetails.booking.fields.purposePlaceholder")}
-                />
-              </label>
-
-              {formError ? <p className="error-text">{formError}</p> : null}
-
-              <button type="submit" className="btn btn-primary" disabled={isSubmitting || bookingDisabled}>
-                {isSubmitting ? t("pages.resourceDetails.booking.submitting") : t("pages.resourceDetails.booking.submit")}
-              </button>
-            </form>
           </div>
         </div>
       </div>

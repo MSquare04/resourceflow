@@ -11,6 +11,8 @@
     loading: "Загрузка",
     brand: "ResourceFlow",
     resetFilters: "Сбросить фильтры",
+    previousMonth: "Предыдущий месяц",
+    nextMonth: "Следующий месяц",
   },
   language: {
     switcherLabel: "Переключение языка",

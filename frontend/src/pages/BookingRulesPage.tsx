@@ -9,6 +9,7 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
 import { PageHeader } from "../components/PageHeader";
+import { TimePicker } from "../components/TimePicker";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import type { BookingRule, BookingRulePayload } from "../types/bookingRules";
 import type { ResourceType } from "../types/resources";
@@ -456,21 +457,21 @@ export function BookingRulesPage(): JSX.Element {
               <>
                 <label className="field">
                   <span>{t("pages.bookingRules.form.fields.workdayStart")}</span>
-                  <input
-                    type="time"
-                    step="60"
+                  <TimePicker
                     value={formState.workdayStart}
-                    onChange={(event) => setFormState((current) => ({ ...current, workdayStart: event.target.value }))}
+                    onChange={(value) => setFormState((current) => ({ ...current, workdayStart: value }))}
+                    minuteStep={60}
+                    ariaLabel={t("pages.bookingRules.form.fields.workdayStart")}
                   />
                 </label>
 
                 <label className="field">
                   <span>{t("pages.bookingRules.form.fields.workdayEnd")}</span>
-                  <input
-                    type="time"
-                    step="60"
+                  <TimePicker
                     value={formState.workdayEnd}
-                    onChange={(event) => setFormState((current) => ({ ...current, workdayEnd: event.target.value }))}
+                    onChange={(value) => setFormState((current) => ({ ...current, workdayEnd: value }))}
+                    minuteStep={60}
+                    ariaLabel={t("pages.bookingRules.form.fields.workdayEnd")}
                   />
                 </label>
               </>
