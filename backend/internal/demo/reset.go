@@ -45,9 +45,10 @@ type Counts struct {
 }
 
 type Resetter struct {
-	db     *sql.DB
-	hasher auth.PasswordHasher
-	now    time.Time
+	db       *sql.DB
+	hasher   auth.PasswordHasher
+	now      time.Time
+	location *time.Location
 }
 
 type departmentSeed struct {
@@ -115,11 +116,16 @@ type timeWindow struct {
 	end   time.Time
 }
 
-func NewResetter(db *sql.DB, hasher auth.PasswordHasher, now time.Time) *Resetter {
+func NewResetter(db *sql.DB, hasher auth.PasswordHasher, now time.Time, location *time.Location) *Resetter {
+	if location == nil {
+		location = time.UTC
+	}
+
 	return &Resetter{
-		db:     db,
-		hasher: hasher,
-		now:    now.UTC().Truncate(time.Second),
+		db:       db,
+		hasher:   hasher,
+		now:      now.UTC().Truncate(time.Second),
+		location: location,
 	}
 }
 
@@ -208,11 +214,11 @@ func (r *Resetter) ResetAndSeed(ctx context.Context, appEnv, dbName, password st
 		return summary, err
 	}
 
-	if _, err := seedResourceUnavailability(ctx, tx, resources, r.now); err != nil {
+	if _, err := seedResourceUnavailability(ctx, tx, resources, r.now, r.location); err != nil {
 		return summary, err
 	}
 
-	if _, err := seedBookings(ctx, tx, resources, users, r.now); err != nil {
+	if _, err := seedBookings(ctx, tx, resources, users, r.now, r.location); err != nil {
 		return summary, err
 	}
 
@@ -448,7 +454,10 @@ func seedResourceTypes(
 		{code: "meeting-room", category: "rooms", name: "Переговорная", description: "Небольшая комната для встреч и интервью", isActive: true},
 		{code: "conference-hall", category: "rooms", name: "Конференц-зал", description: "Большой зал для презентаций и общих встреч", isActive: true},
 		{code: "passenger-car", category: "transport", name: "Легковой автомобиль", description: "Служебный автомобиль для поездок сотрудников", isActive: true},
+		{code: "cargo-van", category: "transport", name: "Грузовой автомобиль", description: "Транспорт для перевозки оборудования и хозяйственных грузов", isActive: true},
+		{code: "minibus", category: "transport", name: "Микроавтобус", description: "Транспорт для групповых поездок и выездных мероприятий", isActive: true},
 		{code: "projector", category: "equipment", name: "Проектор", description: "Переносной проектор для встреч и обучения", isActive: true},
+		{code: "laptop", category: "equipment", name: "Ноутбук", description: "Мобильное рабочее устройство для презентаций и выездной работы", isActive: true},
 		{code: "workspace", category: "workplaces", name: "Рабочее место", description: "Фиксированное место в офисном пространстве", isActive: true},
 	}
 
@@ -494,18 +503,23 @@ func seedBookingRules(
 	resourceTypes map[string]resourceTypeSeed,
 	now time.Time,
 ) (map[string]ruleSeed, error) {
-	seeds := []ruleSeed{
-		{ResourceTypeID: resourceTypes["meeting-room"].ID, MinDurationMinutes: 30, MaxDurationMinutes: 180, MaxActiveBookingsPerUser: 3, RequiresApproval: false, BookingHorizonDays: 30, WorkdayStart: "09:00", WorkdayEnd: "18:00", UnrestrictedTime: false, IsActive: true},
-		{ResourceTypeID: resourceTypes["conference-hall"].ID, MinDurationMinutes: 60, MaxDurationMinutes: 480, MaxActiveBookingsPerUser: 2, RequiresApproval: true, BookingHorizonDays: 60, WorkdayStart: "10:00", WorkdayEnd: "19:00", UnrestrictedTime: false, IsActive: true},
-		{ResourceTypeID: resourceTypes["passenger-car"].ID, MinDurationMinutes: 60, MaxDurationMinutes: 480, MaxActiveBookingsPerUser: 1, RequiresApproval: true, BookingHorizonDays: 14, WorkdayStart: "07:00", WorkdayEnd: "22:00", UnrestrictedTime: true, IsActive: true},
-		{ResourceTypeID: resourceTypes["projector"].ID, MinDurationMinutes: 30, MaxDurationMinutes: 480, MaxActiveBookingsPerUser: 2, RequiresApproval: false, BookingHorizonDays: 30, WorkdayStart: "07:00", WorkdayEnd: "22:00", UnrestrictedTime: true, IsActive: true},
-		{ResourceTypeID: resourceTypes["workspace"].ID, MinDurationMinutes: 60, MaxDurationMinutes: 480, MaxActiveBookingsPerUser: 1, RequiresApproval: false, BookingHorizonDays: 14, WorkdayStart: "09:00", WorkdayEnd: "18:00", UnrestrictedTime: false, IsActive: false},
+	seeds := []struct {
+		typeCode string
+		rule     ruleSeed
+	}{
+		{typeCode: "meeting-room", rule: ruleSeed{ResourceTypeID: resourceTypes["meeting-room"].ID, MinDurationMinutes: 30, MaxDurationMinutes: 180, MaxActiveBookingsPerUser: 20, RequiresApproval: false, BookingHorizonDays: 30, WorkdayStart: "09:00", WorkdayEnd: "18:00", UnrestrictedTime: false, IsActive: true}},
+		{typeCode: "conference-hall", rule: ruleSeed{ResourceTypeID: resourceTypes["conference-hall"].ID, MinDurationMinutes: 60, MaxDurationMinutes: 480, MaxActiveBookingsPerUser: 20, RequiresApproval: true, BookingHorizonDays: 60, WorkdayStart: "10:00", WorkdayEnd: "19:00", UnrestrictedTime: false, IsActive: true}},
+		{typeCode: "passenger-car", rule: ruleSeed{ResourceTypeID: resourceTypes["passenger-car"].ID, MinDurationMinutes: 60, MaxDurationMinutes: 480, MaxActiveBookingsPerUser: 20, RequiresApproval: true, BookingHorizonDays: 14, WorkdayStart: "07:00", WorkdayEnd: "22:00", UnrestrictedTime: false, IsActive: true}},
+		{typeCode: "cargo-van", rule: ruleSeed{ResourceTypeID: resourceTypes["cargo-van"].ID, MinDurationMinutes: 60, MaxDurationMinutes: 600, MaxActiveBookingsPerUser: 20, RequiresApproval: true, BookingHorizonDays: 10, WorkdayStart: "06:00", WorkdayEnd: "20:00", UnrestrictedTime: false, IsActive: true}},
+		{typeCode: "minibus", rule: ruleSeed{ResourceTypeID: resourceTypes["minibus"].ID, MinDurationMinutes: 60, MaxDurationMinutes: 720, MaxActiveBookingsPerUser: 20, RequiresApproval: true, BookingHorizonDays: 21, WorkdayStart: "06:00", WorkdayEnd: "22:00", UnrestrictedTime: false, IsActive: true}},
+		{typeCode: "projector", rule: ruleSeed{ResourceTypeID: resourceTypes["projector"].ID, MinDurationMinutes: 30, MaxDurationMinutes: 480, MaxActiveBookingsPerUser: 20, RequiresApproval: false, BookingHorizonDays: 30, WorkdayStart: "00:00", WorkdayEnd: "23:59", UnrestrictedTime: true, IsActive: true}},
+		{typeCode: "laptop", rule: ruleSeed{ResourceTypeID: resourceTypes["laptop"].ID, MinDurationMinutes: 5, MaxDurationMinutes: 600, MaxActiveBookingsPerUser: 20, RequiresApproval: false, BookingHorizonDays: 14, WorkdayStart: "00:00", WorkdayEnd: "23:59", UnrestrictedTime: true, IsActive: true}},
+		{typeCode: "workspace", rule: ruleSeed{ResourceTypeID: resourceTypes["workspace"].ID, MinDurationMinutes: 60, MaxDurationMinutes: 480, MaxActiveBookingsPerUser: 20, RequiresApproval: false, BookingHorizonDays: 14, WorkdayStart: "09:00", WorkdayEnd: "18:00", UnrestrictedTime: false, IsActive: false}},
 	}
 
 	result := make(map[string]ruleSeed, len(seeds))
-	for index, seed := range seeds {
-		typeCodes := []string{"meeting-room", "conference-hall", "passenger-car", "projector", "workspace"}
-		typeCode := typeCodes[index]
+	for _, item := range seeds {
+		seed := item.rule
 		err := tx.QueryRowContext(
 			ctx,
 			`INSERT INTO app.booking_rules (
@@ -537,9 +551,9 @@ func seedBookingRules(
 			now,
 		).Scan(&seed.ID)
 		if err != nil {
-			return nil, fmt.Errorf("insert booking rule for %q: %w", typeCode, err)
+			return nil, fmt.Errorf("insert booking rule for %q: %w", item.typeCode, err)
 		}
-		result[typeCode] = seed
+		result[item.typeCode] = seed
 	}
 
 	return result, nil
@@ -577,7 +591,7 @@ func seedResources(
 		{
 			key:         "neva",
 			name:        "Переговорная «Нева»",
-			description: "Светлая переговорная рядом с техническим блоком для встреч и интервью.",
+			description: "Светлая переговорная рядом с техническим блоком для встреч, интервью и ежедневных синхронизаций.",
 			category:    "rooms",
 			typeCode:    "meeting-room",
 			department:  departmentPtr("Информационные технологии"),
@@ -589,7 +603,7 @@ func seedResources(
 		{
 			key:         "volga",
 			name:        "Конференц-зал «Волга»",
-			description: "Основной зал для презентаций, квартальных встреч и защит проектов.",
+			description: "Основной зал для квартальных презентаций, общих встреч и защиты проектных инициатив.",
 			category:    "rooms",
 			typeCode:    "conference-hall",
 			department:  departmentPtr("Администрация"),
@@ -611,13 +625,61 @@ func seedResources(
 			isActive:    true,
 		},
 		{
+			key:         "hyundai-solaris",
+			name:        "Автомобиль Hyundai Solaris",
+			description: "Резервный автомобиль. Бронирование временно отключено до планового техобслуживания.",
+			category:    "transport",
+			typeCode:    "passenger-car",
+			department:  departmentPtr("Эксплуатация"),
+			location:    stringPtr("Парковка A, место 4"),
+			capacity:    int64Ptr(5),
+			isBookable:  false,
+			isActive:    true,
+		},
+		{
+			key:         "gazel-next",
+			name:        "ГАЗель Next",
+			description: "Грузовой автомобиль для перевозки оборудования, мебели и хозяйственных материалов.",
+			category:    "transport",
+			typeCode:    "cargo-van",
+			department:  departmentPtr("Эксплуатация"),
+			location:    stringPtr("Грузовая парковка, место G2"),
+			capacity:    int64Ptr(2),
+			isBookable:  true,
+			isActive:    true,
+		},
+		{
+			key:         "ford-transit",
+			name:        "Ford Transit",
+			description: "Микроавтобус для групповых выездов на обучение, собеседования и клиентские мероприятия.",
+			category:    "transport",
+			typeCode:    "minibus",
+			department:  departmentPtr("Эксплуатация"),
+			location:    stringPtr("Парковка C, место 2"),
+			capacity:    int64Ptr(8),
+			isBookable:  true,
+			isActive:    true,
+		},
+		{
 			key:         "epson-eb-fh52",
 			name:        "Проектор Epson EB-FH52",
-			description: "Портативный проектор для внутренних презентаций и обучения сотрудников.",
+			description: "Портативный проектор для внутренних презентаций, обучения и переговоров с демонстрацией материалов.",
 			category:    "equipment",
 			typeCode:    "projector",
 			department:  departmentPtr("Отдел персонала"),
 			location:    stringPtr("Склад техники, шкаф 2"),
+			capacity:    nil,
+			isBookable:  true,
+			isActive:    true,
+		},
+		{
+			key:         "thinkpad-t14",
+			name:        "Lenovo ThinkPad T14",
+			description: "Ноутбук для выездной работы, презентаций и оперативной замены стационарного рабочего места.",
+			category:    "equipment",
+			typeCode:    "laptop",
+			department:  departmentPtr("Информационные технологии"),
+			location:    stringPtr("Выдача техники, стойка 1"),
 			capacity:    nil,
 			isBookable:  true,
 			isActive:    true,
@@ -637,7 +699,7 @@ func seedResources(
 		{
 			key:         "ladoga",
 			name:        "Переговорная «Ладога»",
-			description: "Комната временно выведена из эксплуатации на время ремонта.",
+			description: "Комната временно выведена из эксплуатации на время ремонта и перенастройки вентиляции.",
 			category:    "rooms",
 			typeCode:    "meeting-room",
 			department:  departmentPtr("Администрация"),
@@ -645,18 +707,6 @@ func seedResources(
 			capacity:    int64Ptr(6),
 			isBookable:  true,
 			isActive:    false,
-		},
-		{
-			key:         "hyundai-solaris",
-			name:        "Автомобиль Hyundai Solaris",
-			description: "Резервный автомобиль, бронирование временно отключено до планового ТО.",
-			category:    "transport",
-			typeCode:    "passenger-car",
-			department:  departmentPtr("Эксплуатация"),
-			location:    stringPtr("Парковка A, место 4"),
-			capacity:    int64Ptr(5),
-			isBookable:  false,
-			isActive:    true,
 		},
 	}
 
@@ -711,8 +761,14 @@ func seedResources(
 	return result, nil
 }
 
-func seedResourceUnavailability(ctx context.Context, tx *sql.Tx, resources map[string]resourceSeed, now time.Time) (int, error) {
-	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+func seedResourceUnavailability(
+	ctx context.Context,
+	tx *sql.Tx,
+	resources map[string]resourceSeed,
+	now time.Time,
+	location *time.Location,
+) (int, error) {
+	dayStart := localDayStart(now, location)
 	startFromTomorrow := dayStart.AddDate(0, 0, 1)
 	pastDay := dayStart.AddDate(0, 0, -2)
 
@@ -720,23 +776,31 @@ func seedResourceUnavailability(ctx context.Context, tx *sql.Tx, resources map[s
 		window timeWindow
 		reason *string
 	}{
-		"neva":  buildRepeatedUnavailability(startFromTomorrow, 7, 13, 0, 15, 0, "Техническое обслуживание переговорной"),
-		"volga": buildRepeatedUnavailability(startFromTomorrow, 7, 17, 0, 18, 0, "Подготовка и уборка зала"),
+		"neva":          buildRepeatedUnavailability(startFromTomorrow, 6, 13, 0, 15, 0, "Временное закрытие переговорной для настройки оборудования"),
+		"gazel-next":    buildRepeatedUnavailability(startFromTomorrow.AddDate(0, 0, 1), 5, 12, 0, 14, 0, "Техническое обслуживание автомобиля"),
+		"epson-eb-fh52": buildRepeatedUnavailability(startFromTomorrow.AddDate(0, 0, 2), 4, 16, 0, 18, 0, "Ремонт оборудования"),
 	}
 
 	intervalsByResource["neva"] = append(intervalsByResource["neva"], struct {
 		window timeWindow
 		reason *string
 	}{
-		window: timeWindow{start: dayAt(pastDay, 15, 0), end: dayAt(pastDay, 16, 0)},
-		reason: stringPtr("Завершённое обслуживание"),
+		window: timeWindow{start: dayAt(pastDay, 14, 0), end: dayAt(pastDay, 15, 0)},
+		reason: stringPtr("Завершённое временное закрытие переговорной"),
 	})
-	intervalsByResource["volga"] = append(intervalsByResource["volga"], struct {
+	intervalsByResource["gazel-next"] = append(intervalsByResource["gazel-next"], struct {
 		window timeWindow
 		reason *string
 	}{
-		window: timeWindow{start: dayAt(pastDay, 17, 0), end: dayAt(pastDay, 18, 0)},
-		reason: stringPtr("Прошлая подготовка зала"),
+		window: timeWindow{start: dayAt(pastDay, 11, 0), end: dayAt(pastDay, 13, 0)},
+		reason: stringPtr("Завершённое обслуживание автомобиля"),
+	})
+	intervalsByResource["epson-eb-fh52"] = append(intervalsByResource["epson-eb-fh52"], struct {
+		window timeWindow
+		reason *string
+	}{
+		window: timeWindow{start: dayAt(pastDay, 9, 0), end: dayAt(pastDay, 10, 0)},
+		reason: stringPtr("Завершённый ремонт проектора"),
 	})
 
 	total := 0
@@ -772,9 +836,16 @@ func seedBookings(
 	resources map[string]resourceSeed,
 	users map[string]userSeed,
 	now time.Time,
+	location *time.Location,
 ) (int, error) {
-	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	dayStart := localDayStart(now, location)
 	tomorrow := dayStart.AddDate(0, 0, 1)
+	day2 := tomorrow.AddDate(0, 0, 1)
+	day3 := tomorrow.AddDate(0, 0, 2)
+	day4 := tomorrow.AddDate(0, 0, 3)
+	day5 := tomorrow.AddDate(0, 0, 4)
+	day6 := tomorrow.AddDate(0, 0, 5)
+	day7 := tomorrow.AddDate(0, 0, 6)
 	pastDay := dayStart.AddDate(0, 0, -2)
 
 	admin := users["anna.smirnova@resourceflow.example"]
@@ -810,19 +881,19 @@ func seedBookings(
 		{
 			resourceKey: "skoda-octavia",
 			userID:      hr.ID,
-			startAt:     dayAt(tomorrow.AddDate(0, 0, 1), 9, 0),
-			endAt:       dayAt(tomorrow.AddDate(0, 0, 1), 13, 0),
+			startAt:     dayAt(day2, 9, 0),
+			endAt:       dayAt(day2, 13, 0),
 			purpose:     stringPtr("Выезд на ярмарку вакансий"),
 			status:      "pending",
 			createdAt:   now.Add(-5 * time.Hour),
 			updatedAt:   now.Add(-5 * time.Hour),
 		},
 		{
-			resourceKey: "volga",
-			userID:      interviewer.ID,
-			startAt:     dayAt(tomorrow.AddDate(0, 0, 4), 14, 0),
-			endAt:       dayAt(tomorrow.AddDate(0, 0, 4), 16, 0),
-			purpose:     stringPtr("Очное интервью с кандидатами"),
+			resourceKey: "gazel-next",
+			userID:      manager.ID,
+			startAt:     dayAt(day3, 8, 0),
+			endAt:       dayAt(day3, 11, 0),
+			purpose:     stringPtr("Перевозка оборудования на выездное мероприятие"),
 			status:      "pending",
 			createdAt:   now.Add(-4 * time.Hour),
 			updatedAt:   now.Add(-4 * time.Hour),
@@ -839,25 +910,77 @@ func seedBookings(
 		},
 		{
 			resourceKey: "epson-eb-fh52",
-			userID:      interviewer.ID,
-			startAt:     dayAt(tomorrow.AddDate(0, 0, 2), 11, 0),
-			endAt:       dayAt(tomorrow.AddDate(0, 0, 2), 13, 0),
-			purpose:     stringPtr("Презентация программы стажировки"),
+			userID:      admin.ID,
+			startAt:     dayAt(day3, 11, 0),
+			endAt:       dayAt(day3, 13, 0),
+			purpose:     stringPtr("Демонстрация материалов для стратегической сессии"),
 			status:      "confirmed",
-			createdAt:   now.Add(-2 * time.Hour),
-			updatedAt:   now.Add(-2 * time.Hour),
+			createdAt:   now.Add(-170 * time.Minute),
+			updatedAt:   now.Add(-170 * time.Minute),
 		},
 		{
 			resourceKey:      "volga",
 			userID:           admin.ID,
-			startAt:          dayAt(tomorrow.AddDate(0, 0, 5), 10, 0),
-			endAt:            dayAt(tomorrow.AddDate(0, 0, 5), 13, 0),
+			startAt:          dayAt(day6, 10, 0),
+			endAt:            dayAt(day6, 13, 0),
 			purpose:          stringPtr("Защита инициатив по бюджету"),
 			status:           "confirmed",
 			approvedByUserID: &manager.ID,
 			approvedAt:       timePtr(now.Add(-90 * time.Minute)),
-			createdAt:        now.Add(-90 * time.Minute),
+			createdAt:        now.Add(-95 * time.Minute),
 			updatedAt:        now.Add(-90 * time.Minute),
+		},
+		{
+			resourceKey:      "ford-transit",
+			userID:           manager.ID,
+			startAt:          dayAt(day4, 8, 0),
+			endAt:            dayAt(day4, 10, 0),
+			purpose:          stringPtr("Трансфер команды на обучение в филиал"),
+			status:           "confirmed",
+			approvedByUserID: &admin.ID,
+			approvedAt:       timePtr(now.Add(-80 * time.Minute)),
+			createdAt:        now.Add(-85 * time.Minute),
+			updatedAt:        now.Add(-80 * time.Minute),
+		},
+		{
+			resourceKey: "thinkpad-t14",
+			userID:      interviewer.ID,
+			startAt:     dayAt(day3, 15, 0),
+			endAt:       dayAt(day3, 16, 0),
+			purpose:     stringPtr("Ежедневное интервью с кандидатами"),
+			status:      "confirmed",
+			createdAt:   now.Add(-70 * time.Minute),
+			updatedAt:   now.Add(-70 * time.Minute),
+		},
+		{
+			resourceKey: "thinkpad-t14",
+			userID:      interviewer.ID,
+			startAt:     dayAt(day4, 15, 0),
+			endAt:       dayAt(day4, 16, 0),
+			purpose:     stringPtr("Ежедневное интервью с кандидатами"),
+			status:      "confirmed",
+			createdAt:   now.Add(-65 * time.Minute),
+			updatedAt:   now.Add(-65 * time.Minute),
+		},
+		{
+			resourceKey: "thinkpad-t14",
+			userID:      interviewer.ID,
+			startAt:     dayAt(day5, 15, 0),
+			endAt:       dayAt(day5, 16, 0),
+			purpose:     stringPtr("Ежедневное интервью с кандидатами"),
+			status:      "confirmed",
+			createdAt:   now.Add(-60 * time.Minute),
+			updatedAt:   now.Add(-60 * time.Minute),
+		},
+		{
+			resourceKey: "neva",
+			userID:      manager.ID,
+			startAt:     dayAt(day7, 16, 0),
+			endAt:       dayAt(day7, 17, 0),
+			purpose:     stringPtr("Встреча по координации ремонта этажей"),
+			status:      "confirmed",
+			createdAt:   now.Add(-50 * time.Minute),
+			updatedAt:   now.Add(-50 * time.Minute),
 		},
 		{
 			resourceKey: "neva",
@@ -873,8 +996,8 @@ func seedBookings(
 		{
 			resourceKey:      "volga",
 			userID:           hr.ID,
-			startAt:          dayAt(tomorrow.AddDate(0, 0, 3), 14, 0),
-			endAt:            dayAt(tomorrow.AddDate(0, 0, 3), 16, 0),
+			startAt:          dayAt(day5, 14, 0),
+			endAt:            dayAt(day5, 16, 0),
 			purpose:          stringPtr("Обучение команды адаптации"),
 			status:           "rejected",
 			approvedByUserID: &admin.ID,
@@ -885,8 +1008,8 @@ func seedBookings(
 		{
 			resourceKey: "skoda-octavia",
 			userID:      employee.ID,
-			startAt:     dayAt(tomorrow.AddDate(0, 0, 4), 9, 0),
-			endAt:       dayAt(tomorrow.AddDate(0, 0, 4), 11, 0),
+			startAt:     dayAt(day5, 9, 0),
+			endAt:       dayAt(day5, 11, 0),
 			purpose:     stringPtr("Отмена поездки в филиал"),
 			status:      "cancelled",
 			cancelledAt: timePtr(now.Add(-30 * time.Minute)),
@@ -987,8 +1110,17 @@ func buildRepeatedUnavailability(
 	return result
 }
 
+func localDayStart(now time.Time, location *time.Location) time.Time {
+	if location == nil {
+		location = time.UTC
+	}
+
+	current := now.In(location)
+	return time.Date(current.Year(), current.Month(), current.Day(), 0, 0, 0, 0, location)
+}
+
 func dayAt(day time.Time, hour, minute int) time.Time {
-	return time.Date(day.Year(), day.Month(), day.Day(), hour, minute, 0, 0, time.UTC)
+	return time.Date(day.Year(), day.Month(), day.Day(), hour, minute, 0, 0, day.Location()).UTC()
 }
 
 func nullableString(value *string) any {
